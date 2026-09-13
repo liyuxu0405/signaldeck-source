@@ -186,7 +186,7 @@ export function tokenChecks(
   return [
     {
       id: "token-billing",
-      label: providerReference ? "官方 Token 计数核对" : "Token 增量估算参考",
+      label: providerReference ? "Anthropic count_tokens 核对" : "Token 增量估算参考",
       status: !monotonic ? "fail" : providerReference ? plausible ? "pass" : "fail" : "warn",
       weight: 22,
       critical: !monotonic || (providerReference && !plausible),
@@ -194,10 +194,10 @@ export function tokenChecks(
         ? "更长输入的上报 Token 未增加，存在可复核的计数异常。"
         : providerReference
           ? plausible
-            ? "响应 usage 与 Anthropic count_tokens 的同输入计数一致。"
-            : "响应 usage 与 Anthropic count_tokens 的同输入计数偏差超过 10%。"
+            ? "响应 usage 与同一上游的 Anthropic count_tokens 计数一致。"
+            : "响应 usage 与同一上游的 Anthropic count_tokens 计数偏差超过 10%。"
           : "当前协议没有可用的官方计数接口；本地 tokenizer 仅作趋势参考，不据此判定虚报。",
-      evidence: `上报 ${shortInput} → ${longInput}（Δ${reportedDelta}）；${providerReference ? "官方 count_tokens" : "本地 cl100k 估算"} ${localShort} → ${localLong}（Δ${localDelta}）；增量比 ${ratio.toFixed(2)}`,
+      evidence: `上报 ${shortInput} → ${longInput}（Δ${reportedDelta}）；${providerReference ? "上游 count_tokens" : "本地 cl100k 估算"} ${localShort} → ${localLong}（Δ${localDelta}）；增量比 ${ratio.toFixed(2)}`,
     },
     {
       id: "stream-usage",

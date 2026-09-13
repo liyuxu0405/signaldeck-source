@@ -19,7 +19,7 @@ npm run dev -- --hostname 0.0.0.0 --port 43127
 - `/v1/models` 连接预检与目标模型下拉选择（不产生推理 Token）
 - Chat Completions / Anthropic Messages 核心响应结构与 ID 形状校验
 - 可选深度检测：Function / Tool Calling 与 Structured Output
-- Anthropic `count_tokens` 官方计数核对；其他协议仅展示本地估算趋势
+- Anthropic usage 与同一上游的 `count_tokens` 交叉核对；其他协议仅展示本地估算趋势
 - 相同输入的 stream / non-stream usage 一致性检查
 - OpenAI / Anthropic / Gemini 异源 usage 字段指纹扫描
 - 可选 Claude extended thinking signature 存在性探针
@@ -28,14 +28,14 @@ npm run dev -- --hostname 0.0.0.0 --port 43127
 
 ## 检测输入与输出
 
-输入：中转站 HTTPS 根地址、一次性低额度 API Key、协议与模型名。标准模式发送 3 个低输出请求；Anthropic 另发送 2 个不生成内容的官方计数请求。深度模式按协议增加 1–2 个能力探针；Anthropic 启用 signature 探针时再增加 1 个请求。
+输入：中转站 HTTPS 根地址、一次性低额度 API Key、协议与模型名。标准模式发送 3 个低输出请求；Anthropic 另发送 2 个不生成内容的 `count_tokens` 请求。深度模式按协议增加 1–2 个能力探针；Anthropic 启用 signature 探针时再增加 1 个请求。
 
 输出：加权风险分、总体结论、接口可用性、协议字段、异源指纹、模型字段一致性、Token 增量比和流式计数差异。API Key 不会出现在响应中。
 
 ## 判断“Token 有水分”的方法
 
 1. 对短提示词和包含 90 个审计标记的长提示词设置相同的短输出约束；
-2. Anthropic 优先调用 `/v1/messages/count_tokens`，同输入的 usage 偏差超过 10% 才标为关键异常；
+2. Anthropic 优先调用同一上游的 `/v1/messages/count_tokens`，同输入的 usage 偏差超过 10% 才标为关键异常；该端点仍可能由中转站实现，不等同于 Anthropic 官方服务器；
 3. OpenAI 和 Gemini 没有通用的中转站官方计数接口，本地 `cl100k_base` 只展示趋势，不参与关键异常判定；
 4. 用同一个短提示分别请求 stream / non-stream；输入计数相差超过 5% 标为关键异常；
 5. 扫描 usage 中是否混入另一厂商命名，例如 OpenAI 响应出现 `input_tokens`、`usage_source` 或 Claude cache 字段。
