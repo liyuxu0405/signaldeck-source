@@ -137,4 +137,8 @@ git push -u github main
 
 ## 技术栈
 
-Next.js 16、React 19、TypeScript、Tailwind CSS 4、shadcn/ui、Undici、js-tiktoken、Vitest。
+Next.js 16、React 19、TypeScript、Tailwind CSS 4、shadcn/ui、js-tiktoken、Vitest。
+
+## 开源许可
+
+SignalDeck 采用 [Apache License 2.0](LICENSE) 开源。检测功能基于公开协议独立实现，不包含 VeriDrop 的 AGPL 源码或测试题库。
