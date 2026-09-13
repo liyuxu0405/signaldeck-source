@@ -108,7 +108,7 @@ export function LiveDashboard() {
             <Input className="mt-2" required value={model} onChange={e => setModel(e.target.value)} placeholder={protocol === "openai" ? "gpt-4.1" : "claude-sonnet-4-5"} />
             {protocol === "anthropic" && <label className="mt-5 flex cursor-pointer items-start gap-3 rounded-xl border border-slate-200 p-3"><input type="checkbox" checked={thinking} onChange={e => setThinking(e.target.checked)} className="mt-1 accent-[#176b5b]" /><span><span className="block text-sm font-medium">启用 Thinking signature 探针</span><span className="mt-1 block text-xs leading-5 text-slate-500">额外消耗约 1,024 个思考 Token。仅检查签名存在与长度，不宣称本地完成密码学验签。</span></span></label>}
             <div className="mt-6 rounded-lg bg-amber-50 p-3 text-xs leading-5 text-amber-800"><AlertTriangle className="mr-1 inline size-3.5" />检测会产生真实上游 Token 费用，请使用低额度专用 Key。</div>
-            <Button className="mt-4 w-full" size="lg" disabled={loading}>{loading ? <><LoaderCircle className="animate-spin" />正在发起受控请求…</> : <>开始真实检测 <ArrowRight /></>}</Button>
+            <Button type="submit" className="mt-4 w-full" size="lg" disabled={loading}>{loading ? <><LoaderCircle className="animate-spin" />正在发起受控请求…</> : <>开始真实检测 <ArrowRight /></>}</Button>
           </form>
 
           <div aria-live="polite" className="min-h-[520px] rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
