@@ -3,10 +3,12 @@ import {
   classifyUpstreamError, estimateTokens, protocolShapeCheck, structuredOutputCheck, summarize,
   tokenChecks, toolCallingCheck, usageFields,
 } from "./detection";
-import { endpointFor, isPublicAddress, modelsEndpointFor, secureEndpoint } from "./safe-endpoint";
+import {
+  countTokensEndpointFor, endpointFor, isPublicAddress, modelsEndpointFor, secureEndpoint,
+} from "./safe-endpoint";
 
 describe("Token 风险分析", () => {
-  it("接受与本地基线接近的增量及一致流式计数", () => {
+  it("本地 tokenizer 只作为非关键估算参考", () => {
     const checks = tokenChecks("openai", {
       shortInput: 20,
       longInput: 120,
@@ -14,15 +16,17 @@ describe("Token 风险分析", () => {
       localShort: 12,
       localLong: 112,
     });
-    expect(checks.map((check) => check.status)).toEqual(["pass", "pass"]);
+    expect(checks.map((check) => check.status)).toEqual(["warn", "pass"]);
+    expect(checks[0].critical).toBe(false);
   });
 
-  it("拒绝显著放大的 Token 增量", () => {
-    const [check] = tokenChecks("openai", {
+  it("官方计数与 usage 显著偏离时判定关键异常", () => {
+    const [check] = tokenChecks("anthropic", {
       shortInput: 20,
       longInput: 400,
       localShort: 12,
       localLong: 112,
+      referenceSource: "provider",
     });
     expect(check.status).toBe("fail");
     expect(check.critical).toBe(true);
@@ -106,6 +110,7 @@ describe("安全接口边界", () => {
     expect(endpointFor(new URL("https://api.example.com/v1"), "anthropic").pathname).toBe("/v1/messages");
     expect(endpointFor(new URL("https://api.example.com/v1"), "gemini").pathname).toBe("/v1/chat/completions");
     expect(modelsEndpointFor(new URL("https://api.example.com/v1")).pathname).toBe("/v1/models");
+    expect(countTokensEndpointFor(new URL("https://api.example.com/v1")).pathname).toBe("/v1/messages/count_tokens");
   });
 
   it("拒绝私网 IP，并接受由 Cloudflare 公网隔离解析的域名", async () => {

@@ -70,3 +70,12 @@ export function modelsEndpointFor(base: URL) {
   result.search = "";
   return result;
 }
+
+export function countTokensEndpointFor(base: URL) {
+  const normalized = base.pathname.replace(/\/+$/, "");
+  const version = normalized.endsWith("/v1") ? normalized : `${normalized}/v1`;
+  const result = new URL(base);
+  result.pathname = `${version}/messages/count_tokens`.replace(/\/+/g, "/");
+  result.search = "";
+  return result;
+}

@@ -99,7 +99,7 @@ export function LiveDashboard() {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ protocol, baseUrl, apiKey, model, thinking, mode }),
-        signal: AbortSignal.timeout(mode === "deep" ? 100_000 : thinking ? 65_000 : 30_000),
+        signal: AbortSignal.timeout(mode === "deep" ? 110_000 : thinking ? 90_000 : protocol === "anthropic" ? 45_000 : 30_000),
       });
       const data = await readJson<Result & { error?: string }>(response);
       if (!response.ok) throw new Error(data.error || "检测请求失败");
@@ -152,7 +152,7 @@ export function LiveDashboard() {
             <div className="mt-5">
               <label className="text-sm font-medium">检测深度</label>
               <div className="mt-2 grid grid-cols-2 gap-1 rounded-lg bg-slate-100 p-1">{(["standard", "deep"] as const).map(item => <button type="button" key={item} onClick={() => setMode(item)} className={`rounded-md px-3 py-2 text-sm font-medium ${mode === item ? "bg-white shadow-sm" : "text-slate-500"}`}>{item === "standard" ? "标准检测" : "深度检测"}</button>)}</div>
-              <p className="mt-2 text-xs leading-5 text-slate-500">{mode === "standard" ? "3 个低输出请求，检查协议与 Token 计数。" : `额外检查 ${protocol === "anthropic" ? "Tool Calling" : "Function Calling 与 Structured Output"}，会增加 ${protocol === "anthropic" ? 1 : 2} 个请求。`}</p>
+              <p className="mt-2 text-xs leading-5 text-slate-500">{mode === "standard" ? `3 个低输出请求${protocol === "anthropic" ? "，另有 2 个不生成内容的官方计数请求" : ""}。` : `额外检查 ${protocol === "anthropic" ? "Tool Calling" : "Function Calling 与 Structured Output"}，会增加 ${protocol === "anthropic" ? 1 : 2} 个请求。`}</p>
             </div>
             <label className="mt-5 block text-sm font-medium">中转接口根地址</label>
             <Input className="mt-2" type="url" required value={baseUrl} onChange={e => { setBaseUrl(e.target.value); setProbe(null); setAvailableModels([]); setModel(""); }} placeholder={protocol === "anthropic" ? "https://relay.example.com" : "https://relay.example.com/v1"} />
@@ -183,7 +183,7 @@ export function LiveDashboard() {
 
       <section id="method" className="mt-10 bg-[#123f37] py-16 text-white sm:py-20">
         <div className="mx-auto max-w-7xl px-4 sm:px-6"><div className="max-w-2xl"><Badge className="bg-white/10 text-emerald-100">判断方法</Badge><h2 className="mt-5 text-3xl font-bold">Token 是否“有水分”，要看交叉证据</h2><p className="mt-4 leading-7 text-emerald-50/70">单次 usage 数字不能自证准确。本实现用相同输出约束的长短输入看增量，用同一输入的流式/非流式计数看一致性，并扫描跨厂商字段残留。</p></div><div className="mt-10 grid gap-4 md:grid-cols-3">{[
-          ["01", "增量基线", "使用本地 cl100k tokenizer 作为公开基线。它不等于所有模型的官方 tokenizer，因此采用宽容区间，只标记大幅偏差。"],
+          ["01", "增量基线", "Anthropic 使用官方 count_tokens 核对；OpenAI 与 Gemini 的本地 tokenizer 只展示趋势，不据此判定虚报。"],
           ["02", "双路径核对", "同一短提示分别走 stream 与 non-stream；输入计数差异超过 5% 时标记风险。"],
           ["03", "协议指纹", "识别 OpenAI 响应混入 Anthropic / Gemini 命名，或 Anthropic 响应出现 OpenAI 计数字段。"],
         ].map(([n,title,text]) => <div key={n} className="rounded-xl border border-white/10 bg-white/[.06] p-5"><span className="font-mono text-xs text-emerald-300">{n}</span><h3 className="mt-8 font-semibold">{title}</h3><p className="mt-2 text-sm leading-6 text-emerald-50/60">{text}</p></div>)}</div></div>

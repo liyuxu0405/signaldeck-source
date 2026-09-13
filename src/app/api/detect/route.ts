@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { endpointFor, secureEndpoint } from "@/lib/safe-endpoint";
+import { countTokensEndpointFor, endpointFor, secureEndpoint } from "@/lib/safe-endpoint";
 import {
   classifyUpstreamError, estimateTokens, protocolShapeCheck, structuredOutputCheck, summarize,
   tokenChecks, toolCallingCheck, usageFields, type DetectionCheck, type Protocol,
@@ -106,8 +106,13 @@ export async function POST(request: NextRequest) {
       headers["anthropic-version"] = "2023-06-01";
     }
 
-    const requestUpstream = async (body: Record<string, unknown>, stream = false, timeout = 20_000) => {
-      const response = await fetch(endpoint, {
+    const requestUpstream = async (
+      body: Record<string, unknown>,
+      stream = false,
+      timeout = 20_000,
+      target: URL = endpoint,
+    ) => {
+      const response = await fetch(target, {
         method: "POST", headers, body: JSON.stringify(body),
         redirect: "manual", signal: AbortSignal.timeout(timeout),
       });
@@ -148,6 +153,28 @@ export async function POST(request: NextRequest) {
     const foreign = usageFields(protocol, rawUsage);
     const responseModel = typeof shortData.model === "string" ? shortData.model : undefined;
     const shape = protocolShapeCheck(protocol, shortData);
+    let referenceShort = estimateTokens(shortPrompt);
+    let referenceLong = estimateTokens(longPrompt);
+    let referenceSource: "provider" | "estimate" = "estimate";
+    let countTokenRequests = 0;
+
+    if (protocol === "anthropic") {
+      countTokenRequests = 2;
+      try {
+        const countEndpoint = countTokensEndpointFor(safe.url);
+        const [shortCount, longCount] = await Promise.all([
+          requestUpstream({ model, messages: [{ role: "user", content: shortPrompt }] }, false, 10_000, countEndpoint),
+          requestUpstream({ model, messages: [{ role: "user", content: longPrompt }] }, false, 10_000, countEndpoint),
+        ]);
+        const shortValue = shortCount.data?.input_tokens;
+        const longValue = longCount.data?.input_tokens;
+        if (typeof shortValue === "number" && typeof longValue === "number") {
+          referenceShort = shortValue;
+          referenceLong = longValue;
+          referenceSource = "provider";
+        }
+      } catch { /* 不支持 count_tokens 的中转站安全降级为非关键估算参考 */ }
+    }
 
     const checks: DetectionCheck[] = [
       {
@@ -170,8 +197,9 @@ export async function POST(request: NextRequest) {
         shortInput: usageFrom(protocol, shortData),
         longInput: usageFrom(protocol, longData),
         streamInput: parseStreamUsage(protocol, streamed.text),
-        localShort: estimateTokens(shortPrompt),
-        localLong: estimateTokens(longPrompt),
+        localShort: referenceShort,
+        localLong: referenceLong,
+        referenceSource,
       }),
     ];
 
@@ -281,6 +309,7 @@ export async function POST(request: NextRequest) {
       ...summary, protocol, model, mode, host: endpoint.hostname, durationMs: Date.now() - started,
       checks,
       requestCount: 3
+        + countTokenRequests
         + (thinking && protocol === "anthropic" ? 1 : 0)
         + (mode === "deep" ? protocol === "anthropic" ? 1 : 2 : 0),
       disclaimer: "本检测能发现协议转译、Token 增量异常与流式计数差异；不能替代供应商账单，也不能仅凭文本数学证明具体模型身份。",

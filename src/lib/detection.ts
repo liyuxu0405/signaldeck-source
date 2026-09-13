@@ -19,6 +19,7 @@ export type UsageSnapshot = {
   streamInput?: number;
   localShort: number;
   localLong: number;
+  referenceSource?: "provider" | "estimate";
 };
 
 const foreignOpenAIFields = [
@@ -160,7 +161,7 @@ export function tokenChecks(
   protocol: Protocol,
   usage: UsageSnapshot,
 ): DetectionCheck[] {
-  const { shortInput, longInput, streamInput, localShort, localLong } = usage;
+  const { shortInput, longInput, streamInput, localShort, localLong, referenceSource = "estimate" } = usage;
   if (shortInput === undefined || longInput === undefined) {
     return [{
       id: "token-billing",
@@ -175,7 +176,9 @@ export function tokenChecks(
   const reportedDelta = longInput - shortInput;
   const localDelta = localLong - localShort;
   const ratio = localDelta > 0 ? reportedDelta / localDelta : 0;
-  const plausible = reportedDelta > 0 && ratio >= 0.55 && ratio <= 1.65;
+  const monotonic = reportedDelta > 0;
+  const providerReference = protocol === "anthropic" && referenceSource === "provider";
+  const plausible = monotonic && ratio >= (providerReference ? 0.9 : 0.55) && ratio <= (providerReference ? 1.1 : 1.65);
   const streamDiff = streamInput === undefined
     ? undefined
     : Math.abs(streamInput - shortInput) / Math.max(shortInput, 1);
@@ -183,20 +186,25 @@ export function tokenChecks(
   return [
     {
       id: "token-billing",
-      label: "Token 增量合理性",
-      status: plausible ? "pass" : "fail",
+      label: providerReference ? "官方 Token 计数核对" : "Token 增量估算参考",
+      status: !monotonic ? "fail" : providerReference ? plausible ? "pass" : "fail" : "warn",
       weight: 22,
-      critical: !plausible,
-      detail: plausible
-        ? "长提示词的上报增量与本地 tokenizer 基线处于合理范围。"
-        : "长短提示词的上报增量与本地基线偏差过大，存在统计或计费风险。",
-      evidence: `上报 ${shortInput} → ${longInput}（Δ${reportedDelta}）；本地 cl100k 基线 ${localShort} → ${localLong}（Δ${localDelta}）；增量比 ${ratio.toFixed(2)}`,
+      critical: !monotonic || (providerReference && !plausible),
+      detail: !monotonic
+        ? "更长输入的上报 Token 未增加，存在可复核的计数异常。"
+        : providerReference
+          ? plausible
+            ? "响应 usage 与 Anthropic count_tokens 的同输入计数一致。"
+            : "响应 usage 与 Anthropic count_tokens 的同输入计数偏差超过 10%。"
+          : "当前协议没有可用的官方计数接口；本地 tokenizer 仅作趋势参考，不据此判定虚报。",
+      evidence: `上报 ${shortInput} → ${longInput}（Δ${reportedDelta}）；${providerReference ? "官方 count_tokens" : "本地 cl100k 估算"} ${localShort} → ${localLong}（Δ${localDelta}）；增量比 ${ratio.toFixed(2)}`,
     },
     {
       id: "stream-usage",
       label: "流式 / 非流式一致性",
       status: streamDiff === undefined ? "warn" : streamDiff <= 0.05 ? "pass" : "fail",
       weight: 13,
+      critical: streamDiff !== undefined && streamDiff > 0.05,
       detail: streamDiff === undefined
         ? "上游未在流式响应中返回 usage，无法完成该项交叉核对。"
         : streamDiff <= 0.05
