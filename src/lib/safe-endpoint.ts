@@ -1,4 +1,5 @@
 import { isIP } from "node:net";
+import type { Protocol } from "./detection";
 
 function isPrivateV4(address: string) {
   const parts = address.split(".").map(Number);
@@ -51,12 +52,21 @@ export async function secureEndpoint(raw: string) {
   return { url };
 }
 
-export function endpointFor(base: URL, protocol: "openai" | "anthropic") {
+export function endpointFor(base: URL, protocol: Protocol) {
   const normalized = base.pathname.replace(/\/+$/, "");
-  const suffix = protocol === "openai" ? "/chat/completions" : "/messages";
+  const suffix = protocol === "anthropic" ? "/messages" : "/chat/completions";
   const version = normalized.endsWith("/v1") ? normalized : `${normalized}/v1`;
   const result = new URL(base);
   result.pathname = `${version}${suffix}`.replace(/\/+/g, "/");
+  result.search = "";
+  return result;
+}
+
+export function modelsEndpointFor(base: URL) {
+  const normalized = base.pathname.replace(/\/+$/, "");
+  const version = normalized.endsWith("/v1") ? normalized : `${normalized}/v1`;
+  const result = new URL(base);
+  result.pathname = `${version}/models`.replace(/\/+/g, "/");
   result.search = "";
   return result;
 }

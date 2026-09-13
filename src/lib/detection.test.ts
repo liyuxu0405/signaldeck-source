@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { estimateTokens, summarize, tokenChecks, usageFields } from "./detection";
-import { endpointFor, isPublicAddress, secureEndpoint } from "./safe-endpoint";
+import {
+  classifyUpstreamError, estimateTokens, protocolShapeCheck, summarize, tokenChecks, usageFields,
+} from "./detection";
+import { endpointFor, isPublicAddress, modelsEndpointFor, secureEndpoint } from "./safe-endpoint";
 
 describe("Token 风险分析", () => {
   it("接受与本地基线接近的增量及一致流式计数", () => {
@@ -38,6 +40,29 @@ describe("Token 风险分析", () => {
     expect(summarize([{ id: "x", label: "x", status: "fail", weight: 10, detail: "x", critical: true }]).verdict).toBe("高风险");
   });
 
+  it("校验 OpenAI 与 Anthropic 核心响应结构", () => {
+    expect(protocolShapeCheck("openai", {
+      id: "chatcmpl-123",
+      object: "chat.completion",
+      choices: [{ message: { role: "assistant", content: "ok" } }],
+      usage: { prompt_tokens: 10 },
+    }).status).toBe("pass");
+    expect(protocolShapeCheck("anthropic", {
+      id: "msg_123",
+      type: "message",
+      role: "assistant",
+      content: [{ type: "text", text: "ok" }],
+      usage: { input_tokens: 10 },
+    }).status).toBe("pass");
+    expect(protocolShapeCheck("gemini", { usage: {} }).critical).toBe(true);
+  });
+
+  it("区分认证、额度和模型不可用错误", () => {
+    expect(classifyUpstreamError(401, "")).toContain("认证失败");
+    expect(classifyUpstreamError(429, "insufficient quota")).toContain("额度不足");
+    expect(classifyUpstreamError(404, "model not found")).toContain("模型不存在");
+  });
+
   it("分词基线随文本增长", () => {
     expect(estimateTokens("hello ".repeat(100))).toBeGreaterThan(estimateTokens("hello"));
   });
@@ -59,6 +84,8 @@ describe("安全接口边界", () => {
     expect(isPublicAddress("1.1.1.1")).toBe(true);
     expect(endpointFor(new URL("https://api.example.com"), "openai").pathname).toBe("/v1/chat/completions");
     expect(endpointFor(new URL("https://api.example.com/v1"), "anthropic").pathname).toBe("/v1/messages");
+    expect(endpointFor(new URL("https://api.example.com/v1"), "gemini").pathname).toBe("/v1/chat/completions");
+    expect(modelsEndpointFor(new URL("https://api.example.com/v1")).pathname).toBe("/v1/models");
   });
 
   it("拒绝私网 IP，并接受由 Cloudflare 公网隔离解析的域名", async () => {

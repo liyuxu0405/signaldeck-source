@@ -15,6 +15,9 @@ npm run dev -- --hostname 0.0.0.0 --port 43127
 
 - OpenAI Chat Completions 兼容协议检测
 - Anthropic Messages 协议检测
+- Gemini OpenAI 兼容协议检测
+- `/v1/models` 连接与目标模型预检（不产生推理 Token）
+- Chat Completions / Anthropic Messages 核心响应结构与 ID 形状校验
 - 长短提示词 Token 增量与本地 `cl100k_base` 基线对照
 - 相同输入的 stream / non-stream usage 一致性检查
 - OpenAI / Anthropic / Gemini 异源 usage 字段指纹扫描
@@ -41,7 +44,7 @@ npm run dev -- --hostname 0.0.0.0 --port 43127
 
 - Key 只存在于一次请求的服务端内存，不写文件、日志或数据库；前端收到结果后立即清空 Key
 - 仅允许 HTTPS 443，拒绝 URL 凭据、重定向、本地域名、私有/保留 IPv4 和 IPv6
-- DNS 解析结果固定到连接，降低 DNS rebinding SSRF 风险
+- Cloudflare `global_fetch_strictly_public` 在连接时强制走公网路由；同时拒绝直接输入的私有/保留 IP
 - 单个上游请求 20 秒超时（thinking 探针 35 秒），响应上限 1 MB
 - 每来源每分钟最多 4 次，总并发最多 3 个检测任务
 - 请求体、模型名与 Key 长度受限

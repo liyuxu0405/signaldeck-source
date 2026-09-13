@@ -1,6 +1,7 @@
 import { getEncoding } from "js-tiktoken";
 
 export type CheckStatus = "pass" | "warn" | "fail";
+export type Protocol = "openai" | "anthropic" | "gemini";
 
 export type DetectionCheck = {
   id: string;
@@ -35,17 +36,77 @@ export function estimateTokens(text: string) {
   return encoding.encode(text).length;
 }
 
-export function usageFields(protocol: "openai" | "anthropic", usage: unknown) {
+export function usageFields(protocol: Protocol, usage: unknown) {
   if (!usage || typeof usage !== "object") return [];
   const keys = Object.keys(usage);
-  if (protocol === "openai") {
+  if (protocol === "openai" || protocol === "gemini") {
     return keys.filter((key) => foreignOpenAIFields.includes(key));
   }
   return keys.filter((key) => key.startsWith("gemini_") || key === "prompt_tokens" || key === "completion_tokens");
 }
 
+function record(value: unknown): Record<string, unknown> | undefined {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : undefined;
+}
+
+export function protocolShapeCheck(protocol: Protocol, data: Record<string, unknown>): DetectionCheck {
+  const usage = record(data.usage);
+  if (protocol === "anthropic") {
+    const content = Array.isArray(data.content) ? data.content : undefined;
+    const valid = data.type === "message" && data.role === "assistant" && Boolean(content?.length) && Boolean(usage);
+    const standardId = typeof data.id === "string" && data.id.startsWith("msg_");
+    return {
+      id: "protocol",
+      label: "Anthropic 响应结构",
+      status: !valid ? "fail" : standardId ? "pass" : "warn",
+      weight: 15,
+      critical: !valid,
+      detail: !valid
+        ? "响应缺少 Anthropic message、assistant、content 或 usage 核心字段。"
+        : standardId
+          ? "响应结构与 Anthropic Messages 协议一致。"
+          : "核心结构有效，但消息 ID 不符合常见的 msg_ 前缀。",
+      evidence: `type=${String(data.type ?? "缺失")}；role=${String(data.role ?? "缺失")}；id=${typeof data.id === "string" ? data.id.slice(0, 24) : "缺失"}`,
+    };
+  }
+
+  const choices = Array.isArray(data.choices) ? data.choices : [];
+  const first = record(choices[0]);
+  const valid = Boolean(record(first?.message)) && Boolean(usage);
+  const expectedObject = data.object === "chat.completion";
+  const standardId = typeof data.id === "string" && data.id.startsWith("chatcmpl-");
+  return {
+    id: "protocol",
+    label: `${protocol === "gemini" ? "Gemini OpenAI 兼容" : "OpenAI"}响应结构`,
+    status: !valid ? "fail" : expectedObject && standardId ? "pass" : "warn",
+    weight: 15,
+    critical: !valid,
+    detail: !valid
+      ? "响应缺少 choices.message 或 usage 核心字段。"
+      : expectedObject && standardId
+        ? "响应结构与 Chat Completions 协议一致。"
+        : "核心结构有效，但 object 或响应 ID 使用了非标准格式。",
+    evidence: `object=${String(data.object ?? "缺失")}；id=${typeof data.id === "string" ? data.id.slice(0, 24) : "缺失"}`,
+  };
+}
+
+export function classifyUpstreamError(status: number, message: string) {
+  const normalized = message.toLowerCase();
+  if (status === 401 || status === 403) return `上游返回 ${status}：认证失败，请检查专用 API Key 与模型权限`;
+  if (status === 429 && /(quota|credit|balance|billing|额度|余额|欠费)/i.test(normalized)) {
+    return "上游额度不足或计费受限，本次检测无效";
+  }
+  if ((status === 400 || status === 404) && /(model|模型|deployment)/i.test(normalized)) {
+    return "目标模型不存在或当前 API Key 无权使用，本次检测无效";
+  }
+  if (status === 429) return "上游请求过于频繁，请稍后重试";
+  return `上游返回 ${status}：${message || "未知错误"}`;
+}
+
 export function tokenChecks(
-  protocol: "openai" | "anthropic",
+  protocol: Protocol,
   usage: UsageSnapshot,
 ): DetectionCheck[] {
   const { shortInput, longInput, streamInput, localShort, localLong } = usage;

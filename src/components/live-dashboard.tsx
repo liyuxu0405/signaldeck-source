@@ -10,7 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
-import type { DetectionCheck } from "@/lib/detection";
+import type { DetectionCheck, Protocol } from "@/lib/detection";
 
 type Result = {
   score: number;
@@ -31,14 +31,44 @@ const statusMeta = {
 };
 
 export function LiveDashboard() {
-  const [protocol, setProtocol] = useState<"openai" | "anthropic">("openai");
+  const [protocol, setProtocol] = useState<Protocol>("openai");
   const [baseUrl, setBaseUrl] = useState("");
   const [apiKey, setApiKey] = useState("");
   const [model, setModel] = useState("");
   const [thinking, setThinking] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [probeLoading, setProbeLoading] = useState(false);
+  const [probe, setProbe] = useState<{ status: "success" | "warn" | "error"; message: string } | null>(null);
   const [error, setError] = useState("");
   const [result, setResult] = useState<Result | null>(null);
+
+  async function probeEndpoint() {
+    setProbeLoading(true);
+    setProbe(null);
+    try {
+      const response = await fetch("/api/probe", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ protocol, baseUrl, apiKey, model }),
+        signal: AbortSignal.timeout(12_000),
+      });
+      const data = await response.json() as { message?: string; error?: string; modelAvailable?: boolean };
+      if (!response.ok) throw new Error(data.error || "连接预检失败");
+      setProbe({
+        status: data.modelAvailable === false ? "warn" : "success",
+        message: data.message || "连接预检通过",
+      });
+    } catch (reason) {
+      setProbe({
+        status: "error",
+        message: reason instanceof DOMException && reason.name === "TimeoutError"
+          ? "连接预检超时，请确认接口地址可用"
+          : reason instanceof Error ? reason.message : "连接预检失败",
+      });
+    } finally {
+      setProbeLoading(false);
+    }
+  }
 
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -98,15 +128,19 @@ export function LiveDashboard() {
             <p className="mt-2 text-xs leading-5 text-slate-500">密钥仅在本次服务端请求的内存中使用；不会写入日志、数据库或返回结果。</p>
             <div className="mt-6">
               <label className="text-sm font-medium">接口协议</label>
-              <div className="mt-2 grid grid-cols-2 gap-2 rounded-lg bg-slate-100 p-1">{(["openai", "anthropic"] as const).map(item => <button type="button" key={item} onClick={() => { setProtocol(item); setThinking(false); }} className={`rounded-md px-3 py-2 text-sm font-medium ${protocol === item ? "bg-white shadow-sm" : "text-slate-500"}`}>{item === "openai" ? "OpenAI 兼容" : "Anthropic"}</button>)}</div>
+              <div className="mt-2 grid grid-cols-3 gap-1 rounded-lg bg-slate-100 p-1">{(["openai", "anthropic", "gemini"] as const).map(item => <button type="button" key={item} onClick={() => { setProtocol(item); setThinking(false); setProbe(null); }} className={`rounded-md px-2 py-2 text-xs font-medium sm:text-sm ${protocol === item ? "bg-white shadow-sm" : "text-slate-500"}`}>{item === "openai" ? "OpenAI" : item === "anthropic" ? "Anthropic" : "Gemini"}</button>)}</div>
             </div>
             <label className="mt-5 block text-sm font-medium">中转接口根地址</label>
-            <Input className="mt-2" type="url" required value={baseUrl} onChange={e => setBaseUrl(e.target.value)} placeholder={protocol === "openai" ? "https://relay.example.com/v1" : "https://relay.example.com"} />
+            <Input className="mt-2" type="url" required value={baseUrl} onChange={e => { setBaseUrl(e.target.value); setProbe(null); }} placeholder={protocol === "anthropic" ? "https://relay.example.com" : "https://relay.example.com/v1"} />
             <label className="mt-5 block text-sm font-medium">API Key</label>
-            <Input className="mt-2" type="password" required autoComplete="off" value={apiKey} onChange={e => setApiKey(e.target.value)} placeholder="仅用于当前检测" />
+            <Input className="mt-2" type="password" required autoComplete="off" value={apiKey} onChange={e => { setApiKey(e.target.value); setProbe(null); }} placeholder="仅用于当前检测" />
             <label className="mt-5 block text-sm font-medium">目标模型</label>
-            <Input className="mt-2" required value={model} onChange={e => setModel(e.target.value)} placeholder={protocol === "openai" ? "gpt-4.1" : "claude-sonnet-4-5"} />
+            <Input className="mt-2" required value={model} onChange={e => { setModel(e.target.value); setProbe(null); }} placeholder={protocol === "openai" ? "gpt-4.1" : protocol === "anthropic" ? "claude-sonnet-4-5" : "gemini-2.5-pro"} />
             {protocol === "anthropic" && <label className="mt-5 flex cursor-pointer items-start gap-3 rounded-xl border border-slate-200 p-3"><input type="checkbox" checked={thinking} onChange={e => setThinking(e.target.checked)} className="mt-1 accent-[#176b5b]" /><span><span className="block text-sm font-medium">启用 Thinking signature 探针</span><span className="mt-1 block text-xs leading-5 text-slate-500">额外消耗约 1,024 个思考 Token。仅检查签名存在与长度，不宣称本地完成密码学验签。</span></span></label>}
+            <Button type="button" variant="outline" className="mt-5 w-full" disabled={probeLoading || loading || !baseUrl || !apiKey} onClick={probeEndpoint}>
+              {probeLoading ? <><LoaderCircle className="animate-spin" />正在检查连接…</> : <><SearchCheck />预检连接与模型</>}
+            </Button>
+            {probe && <div className={`mt-2 rounded-lg border p-3 text-xs leading-5 ${probe.status === "success" ? "border-emerald-200 bg-emerald-50 text-emerald-800" : probe.status === "warn" ? "border-amber-200 bg-amber-50 text-amber-800" : "border-red-200 bg-red-50 text-red-700"}`}>{probe.message}</div>}
             <div className="mt-6 rounded-lg bg-amber-50 p-3 text-xs leading-5 text-amber-800"><AlertTriangle className="mr-1 inline size-3.5" />检测会产生真实上游 Token 费用，请使用低额度专用 Key。</div>
             <Button type="submit" className="mt-4 w-full" size="lg" disabled={loading}>{loading ? <><LoaderCircle className="animate-spin" />正在发起受控请求…</> : <>开始真实检测 <ArrowRight /></>}</Button>
           </form>

@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { endpointFor, secureEndpoint } from "@/lib/safe-endpoint";
-import { estimateTokens, summarize, tokenChecks, usageFields, type DetectionCheck } from "@/lib/detection";
+import {
+  classifyUpstreamError, estimateTokens, protocolShapeCheck, summarize, tokenChecks, usageFields,
+  type DetectionCheck, type Protocol,
+} from "@/lib/detection";
 
 export const runtime = "nodejs";
 
@@ -9,7 +12,6 @@ let activeJobs = 0;
 const shortPrompt = "Reply with exactly SIGNALDECK_OK and nothing else.";
 const longPrompt = `${Array.from({ length: 90 }, (_, i) => `audit-marker-${i}`).join(" ")}\nReply with exactly SIGNALDECK_OK and nothing else.`;
 
-type Protocol = "openai" | "anthropic";
 type Payload = { baseUrl?: string; apiKey?: string; model?: string; protocol?: Protocol; thinking?: boolean };
 
 function rateLimited(ip: string) {
@@ -43,7 +45,7 @@ async function limitedText(response: Response) {
 
 function usageFrom(protocol: Protocol, data: Record<string, unknown>) {
   const usage = data.usage as Record<string, unknown> | undefined;
-  const field = protocol === "openai" ? "prompt_tokens" : "input_tokens";
+  const field = protocol === "anthropic" ? "input_tokens" : "prompt_tokens";
   const value = usage?.[field];
   return typeof value === "number" ? value : undefined;
 }
@@ -81,27 +83,23 @@ export async function POST(request: NextRequest) {
   }
   const { baseUrl, apiKey, model, protocol, thinking = false } = input;
   if (!baseUrl || !apiKey || !model || !protocol) return NextResponse.json({ error: "请完整填写检测参数" }, { status: 400 });
-  if (!["openai", "anthropic"].includes(protocol)) return NextResponse.json({ error: "不支持的协议" }, { status: 400 });
+  if (!["openai", "anthropic", "gemini"].includes(protocol)) return NextResponse.json({ error: "不支持的协议" }, { status: 400 });
   if (apiKey.length < 8 || apiKey.length > 512 || model.length > 120) return NextResponse.json({ error: "密钥或模型名称格式无效" }, { status: 400 });
 
   activeJobs += 1;
   const started = Date.now();
-  let safe: Awaited<ReturnType<typeof secureEndpoint>> | undefined;
   try {
-    safe = await Promise.race([
-      secureEndpoint(baseUrl),
-      new Promise<never>((_, reject) => setTimeout(() => reject(new Error("接口 DNS 解析超时")), 5_000)),
-    ]);
+    const safe = await secureEndpoint(baseUrl);
     const endpoint = endpointFor(safe.url, protocol);
     const headers: Record<string, string> = { "content-type": "application/json" };
-    if (protocol === "openai") headers.authorization = `Bearer ${apiKey}`;
+    if (protocol === "openai" || protocol === "gemini") headers.authorization = `Bearer ${apiKey}`;
     else {
       headers["x-api-key"] = apiKey;
       headers["anthropic-version"] = "2023-06-01";
     }
 
     const call = async (prompt: string, stream = false, withThinking = false) => {
-      const body = protocol === "openai"
+      const body = protocol === "openai" || protocol === "gemini"
         ? { model, messages: [{ role: "user", content: prompt }], temperature: 0, max_tokens: withThinking ? 1200 : 24, stream, ...(stream ? { stream_options: { include_usage: true } } : {}) }
         : { model, messages: [{ role: "user", content: prompt }], temperature: 0, max_tokens: withThinking ? 1200 : 24, stream, ...(withThinking ? { thinking: { type: "enabled", budget_tokens: 1024 } } : {}) };
       const response = await fetch(endpoint, {
@@ -113,16 +111,13 @@ export async function POST(request: NextRequest) {
       }
       const text = await limitedText(response);
       if (!response.ok) {
-        if (response.status === 401 || response.status === 403) {
-          throw new Error(`上游返回 ${response.status}：认证失败，请检查专用 API Key 与模型权限`);
-        }
         let message = text.slice(0, 240);
         try {
           const parsed = JSON.parse(text) as { error?: { message?: string } | string };
           message = typeof parsed.error === "string" ? parsed.error : parsed.error?.message ?? message;
         } catch { /* 返回安全截断的上游消息 */ }
         message = message.replace(/\b(?:sk|key|token)-[A-Za-z0-9_.*-]{4,}/gi, "[已隐藏凭据]");
-        throw new Error(`上游返回 ${response.status}：${message || "未知错误"}`);
+        throw new Error(classifyUpstreamError(response.status, message));
       }
       if (stream) return { text, data: undefined };
       try { return { text, data: JSON.parse(text) as Record<string, unknown> }; } catch {
@@ -140,6 +135,7 @@ export async function POST(request: NextRequest) {
     const rawUsage = shortData.usage;
     const foreign = usageFields(protocol, rawUsage);
     const responseModel = typeof shortData.model === "string" ? shortData.model : undefined;
+    const shape = protocolShapeCheck(protocol, shortData);
 
     const checks: DetectionCheck[] = [
       {
@@ -147,12 +143,7 @@ export async function POST(request: NextRequest) {
         detail: "三组受控请求均由服务端直接发往目标接口并获得有效响应。",
         evidence: `目标 ${endpoint.hostname}；Cloudflare 公网隔离路由`,
       },
-      {
-        id: "protocol", label: "协议形状", status: rawUsage && typeof rawUsage === "object" ? "pass" : "fail", weight: 15,
-        detail: rawUsage && typeof rawUsage === "object" ? "响应包含可审计的 usage 对象。" : "响应缺少 usage 对象。",
-        critical: !rawUsage,
-        evidence: rawUsage && typeof rawUsage === "object" ? `usage 字段：${Object.keys(rawUsage).join(", ")}` : undefined,
-      },
+      shape,
       {
         id: "foreign-fields", label: "异源字段指纹", status: foreign.length ? "fail" : "pass", weight: 10,
         detail: foreign.length ? "发现其他厂商协议的计数字段，疑似存在适配或转译层。" : "未在 usage 中发现已知的跨厂商字段。",
@@ -188,7 +179,10 @@ export async function POST(request: NextRequest) {
         checks.push({ id: "thinking-signature", label: "Thinking signature", status: "warn", weight: 15, detail: "未启用深度探针；该项不会产生约 1,024 个思考 Token 的额外费用。" });
       }
     } else {
-      checks.push({ id: "identity-boundary", label: "身份判断边界", status: "warn", weight: 15, detail: "OpenAI Chat Completions 没有公开可独立验证的模型签名，本结果只能判断协议与计数异常，不能证明高配模型未被低配模型替换。" });
+      checks.push({
+        id: "identity-boundary", label: "身份判断边界", status: "warn", weight: 15,
+        detail: `${protocol === "gemini" ? "Gemini OpenAI 兼容" : "OpenAI Chat Completions"}没有可由本服务独立验证的模型签名，本结果只能判断协议与计数异常，不能证明高配模型未被替换。`,
+      });
     }
 
     const summary = summarize(checks);
