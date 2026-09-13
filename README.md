@@ -16,7 +16,7 @@ npm run dev -- --hostname 0.0.0.0 --port 43127
 - OpenAI Chat Completions 兼容协议检测
 - Anthropic Messages 协议检测
 - Gemini OpenAI 兼容协议检测
-- `/v1/models` 连接与目标模型预检（不产生推理 Token）
+- `/v1/models` 连接预检与目标模型下拉选择（不产生推理 Token）
 - Chat Completions / Anthropic Messages 核心响应结构与 ID 形状校验
 - 长短提示词 Token 增量与本地 `cl100k_base` 基线对照
 - 相同输入的 stream / non-stream usage 一致性检查

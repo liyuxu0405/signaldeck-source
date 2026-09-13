@@ -103,11 +103,11 @@ export async function POST(request: NextRequest) {
     const entries = data && typeof data === "object" && Array.isArray((data as { data?: unknown }).data)
       ? (data as { data: unknown[] }).data
       : [];
-    const models = entries.flatMap((entry) => {
+    const models = [...new Set(entries.flatMap((entry) => {
       if (!entry || typeof entry !== "object") return [];
       const id = (entry as { id?: unknown }).id;
       return typeof id === "string" ? [id] : [];
-    }).slice(0, 50);
+    }))].sort((a, b) => a.localeCompare(b)).slice(0, 500);
     const modelAvailable = model ? models.some((id) => id === model) : undefined;
 
     return NextResponse.json({

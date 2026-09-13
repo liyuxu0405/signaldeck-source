@@ -35,6 +35,7 @@ export function LiveDashboard() {
   const [baseUrl, setBaseUrl] = useState("");
   const [apiKey, setApiKey] = useState("");
   const [model, setModel] = useState("");
+  const [availableModels, setAvailableModels] = useState<string[]>([]);
   const [thinking, setThinking] = useState(false);
   const [loading, setLoading] = useState(false);
   const [probeLoading, setProbeLoading] = useState(false);
@@ -52,13 +53,18 @@ export function LiveDashboard() {
         body: JSON.stringify({ protocol, baseUrl, apiKey, model }),
         signal: AbortSignal.timeout(12_000),
       });
-      const data = await response.json() as { message?: string; error?: string; modelAvailable?: boolean };
+      const data = await response.json() as { message?: string; error?: string; models?: string[] };
       if (!response.ok) throw new Error(data.error || "连接预检失败");
+      const models = data.models ?? [];
+      setAvailableModels(models);
+      setModel((current) => models.includes(current) ? current : models[0] ?? "");
       setProbe({
-        status: data.modelAvailable === false ? "warn" : "success",
+        status: models.length ? "success" : "warn",
         message: data.message || "连接预检通过",
       });
     } catch (reason) {
+      setAvailableModels([]);
+      setModel("");
       setProbe({
         status: "error",
         message: reason instanceof DOMException && reason.name === "TimeoutError"
@@ -128,21 +134,24 @@ export function LiveDashboard() {
             <p className="mt-2 text-xs leading-5 text-slate-500">密钥仅在本次服务端请求的内存中使用；不会写入日志、数据库或返回结果。</p>
             <div className="mt-6">
               <label className="text-sm font-medium">接口协议</label>
-              <div className="mt-2 grid grid-cols-3 gap-1 rounded-lg bg-slate-100 p-1">{(["openai", "anthropic", "gemini"] as const).map(item => <button type="button" key={item} onClick={() => { setProtocol(item); setThinking(false); setProbe(null); }} className={`rounded-md px-2 py-2 text-xs font-medium sm:text-sm ${protocol === item ? "bg-white shadow-sm" : "text-slate-500"}`}>{item === "openai" ? "OpenAI" : item === "anthropic" ? "Anthropic" : "Gemini"}</button>)}</div>
+              <div className="mt-2 grid grid-cols-3 gap-1 rounded-lg bg-slate-100 p-1">{(["openai", "anthropic", "gemini"] as const).map(item => <button type="button" key={item} onClick={() => { setProtocol(item); setThinking(false); setProbe(null); setAvailableModels([]); setModel(""); }} className={`rounded-md px-2 py-2 text-xs font-medium sm:text-sm ${protocol === item ? "bg-white shadow-sm" : "text-slate-500"}`}>{item === "openai" ? "OpenAI" : item === "anthropic" ? "Anthropic" : "Gemini"}</button>)}</div>
             </div>
             <label className="mt-5 block text-sm font-medium">中转接口根地址</label>
-            <Input className="mt-2" type="url" required value={baseUrl} onChange={e => { setBaseUrl(e.target.value); setProbe(null); }} placeholder={protocol === "anthropic" ? "https://relay.example.com" : "https://relay.example.com/v1"} />
+            <Input className="mt-2" type="url" required value={baseUrl} onChange={e => { setBaseUrl(e.target.value); setProbe(null); setAvailableModels([]); setModel(""); }} placeholder={protocol === "anthropic" ? "https://relay.example.com" : "https://relay.example.com/v1"} />
             <label className="mt-5 block text-sm font-medium">API Key</label>
-            <Input className="mt-2" type="password" required autoComplete="off" value={apiKey} onChange={e => { setApiKey(e.target.value); setProbe(null); }} placeholder="仅用于当前检测" />
+            <Input className="mt-2" type="password" required autoComplete="off" value={apiKey} onChange={e => { setApiKey(e.target.value); setProbe(null); setAvailableModels([]); setModel(""); }} placeholder="仅用于当前检测" />
             <label className="mt-5 block text-sm font-medium">目标模型</label>
-            <Input className="mt-2" required value={model} onChange={e => { setModel(e.target.value); setProbe(null); }} placeholder={protocol === "openai" ? "gpt-4.1" : protocol === "anthropic" ? "claude-sonnet-4-5" : "gemini-2.5-pro"} />
+            <select className="mt-2 h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm outline-none transition focus:border-[#176b5b] focus:ring-3 focus:ring-emerald-700/15 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-400" required disabled={!availableModels.length} value={model} onChange={e => setModel(e.target.value)}>
+              {!availableModels.length && <option value="">{probeLoading ? "正在读取模型列表…" : "请先预检连接与模型"}</option>}
+              {availableModels.map(item => <option key={item} value={item}>{item}</option>)}
+            </select>
             {protocol === "anthropic" && <label className="mt-5 flex cursor-pointer items-start gap-3 rounded-xl border border-slate-200 p-3"><input type="checkbox" checked={thinking} onChange={e => setThinking(e.target.checked)} className="mt-1 accent-[#176b5b]" /><span><span className="block text-sm font-medium">启用 Thinking signature 探针</span><span className="mt-1 block text-xs leading-5 text-slate-500">额外消耗约 1,024 个思考 Token。仅检查签名存在与长度，不宣称本地完成密码学验签。</span></span></label>}
             <Button type="button" variant="outline" className="mt-5 w-full" disabled={probeLoading || loading || !baseUrl || !apiKey} onClick={probeEndpoint}>
               {probeLoading ? <><LoaderCircle className="animate-spin" />正在检查连接…</> : <><SearchCheck />预检连接与模型</>}
             </Button>
             {probe && <div className={`mt-2 rounded-lg border p-3 text-xs leading-5 ${probe.status === "success" ? "border-emerald-200 bg-emerald-50 text-emerald-800" : probe.status === "warn" ? "border-amber-200 bg-amber-50 text-amber-800" : "border-red-200 bg-red-50 text-red-700"}`}>{probe.message}</div>}
             <div className="mt-6 rounded-lg bg-amber-50 p-3 text-xs leading-5 text-amber-800"><AlertTriangle className="mr-1 inline size-3.5" />检测会产生真实上游 Token 费用，请使用低额度专用 Key。</div>
-            <Button type="submit" className="mt-4 w-full" size="lg" disabled={loading}>{loading ? <><LoaderCircle className="animate-spin" />正在发起受控请求…</> : <>开始真实检测 <ArrowRight /></>}</Button>
+            <Button type="submit" className="mt-4 w-full" size="lg" disabled={loading || !model}>{loading ? <><LoaderCircle className="animate-spin" />正在发起受控请求…</> : <>开始真实检测 <ArrowRight /></>}</Button>
           </form>
 
           <div aria-live="polite" className="min-h-[520px] rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
