@@ -30,6 +30,18 @@ const statusMeta = {
   fail: { label: "异常", icon: XCircle, style: "text-red-700 bg-red-50 border-red-200" },
 };
 
+async function readJson<T>(response: Response): Promise<T> {
+  const text = await response.text();
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    const isHtml = response.headers.get("content-type")?.includes("text/html") || /^\s*</.test(text);
+    throw new Error(isHtml
+      ? `服务暂时返回了网页错误（HTTP ${response.status}），请稍后重试`
+      : `服务响应格式无效（HTTP ${response.status}）`);
+  }
+}
+
 export function LiveDashboard() {
   const [protocol, setProtocol] = useState<Protocol>("openai");
   const [baseUrl, setBaseUrl] = useState("");
@@ -53,7 +65,7 @@ export function LiveDashboard() {
         body: JSON.stringify({ protocol, baseUrl, apiKey, model }),
         signal: AbortSignal.timeout(12_000),
       });
-      const data = await response.json() as { message?: string; error?: string; models?: string[] };
+      const data = await readJson<{ message?: string; error?: string; models?: string[] }>(response);
       if (!response.ok) throw new Error(data.error || "连接预检失败");
       const models = data.models ?? [];
       setAvailableModels(models);
@@ -88,7 +100,7 @@ export function LiveDashboard() {
         body: JSON.stringify({ protocol, baseUrl, apiKey, model, thinking }),
         signal: AbortSignal.timeout(thinking ? 65_000 : 30_000),
       });
-      const data = await response.json() as Result & { error?: string };
+      const data = await readJson<Result & { error?: string }>(response);
       if (!response.ok) throw new Error(data.error || "检测请求失败");
       setResult(data);
       setApiKey("");
