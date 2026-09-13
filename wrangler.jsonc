@@ -16,5 +16,11 @@
       "binding": "WORKER_SELF_REFERENCE",
       "service": "signaldeck"
     }
+  ],
+  "kv_namespaces": [
+    {
+      "binding": "SIGNALDECK",
+      "id": "597593c5090d40f2b68a9591b6125b3a"
+    }
   ]
 }
