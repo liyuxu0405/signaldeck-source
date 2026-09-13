@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { estimateTokens, summarize, tokenChecks, usageFields } from "./detection";
-import { endpointFor, isPublicAddress } from "./safe-endpoint";
+import { endpointFor, isPublicAddress, secureEndpoint } from "./safe-endpoint";
 
 describe("Token 风险分析", () => {
   it("接受与本地基线接近的增量及一致流式计数", () => {
@@ -59,5 +59,12 @@ describe("安全接口边界", () => {
     expect(isPublicAddress("1.1.1.1")).toBe(true);
     expect(endpointFor(new URL("https://api.example.com"), "openai").pathname).toBe("/v1/chat/completions");
     expect(endpointFor(new URL("https://api.example.com/v1"), "anthropic").pathname).toBe("/v1/messages");
+  });
+
+  it("拒绝私网 IP，并接受由 Cloudflare 公网隔离解析的域名", async () => {
+    await expect(secureEndpoint("https://127.0.0.1/v1")).rejects.toThrow("私有");
+    await expect(secureEndpoint("https://api.b.ai/v1")).resolves.toEqual({
+      url: new URL("https://api.b.ai/v1"),
+    });
   });
 });

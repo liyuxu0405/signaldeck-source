@@ -106,8 +106,11 @@ export async function POST(request: NextRequest) {
         : { model, messages: [{ role: "user", content: prompt }], temperature: 0, max_tokens: withThinking ? 1200 : 24, stream, ...(withThinking ? { thinking: { type: "enabled", budget_tokens: 1024 } } : {}) };
       const response = await fetch(endpoint, {
         method: "POST", headers, body: JSON.stringify(body),
-        redirect: "error", signal: AbortSignal.timeout(withThinking ? 35_000 : 20_000),
+        redirect: "manual", signal: AbortSignal.timeout(withThinking ? 35_000 : 20_000),
       });
+      if (response.status >= 300 && response.status < 400) {
+        throw new Error("上游返回重定向，已为安全起见拒绝");
+      }
       const text = await limitedText(response);
       if (!response.ok) {
         if (response.status === 401 || response.status === 403) {
@@ -142,7 +145,7 @@ export async function POST(request: NextRequest) {
       {
         id: "connectivity", label: "真实接口可用性", status: "pass", weight: 15,
         detail: "三组受控请求均由服务端直接发往目标接口并获得有效响应。",
-        evidence: `目标 ${endpoint.hostname}；固定解析 ${safe.address}`,
+        evidence: `目标 ${endpoint.hostname}；Cloudflare 公网隔离路由`,
       },
       {
         id: "protocol", label: "协议形状", status: rawUsage && typeof rawUsage === "object" ? "pass" : "fail", weight: 15,

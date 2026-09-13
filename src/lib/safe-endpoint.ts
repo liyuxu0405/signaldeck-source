@@ -1,4 +1,3 @@
-import { resolve4, resolve6 } from "node:dns/promises";
 import { isIP } from "node:net";
 
 function isPrivateV4(address: string) {
@@ -32,11 +31,6 @@ export function isPublicAddress(address: string) {
   return false;
 }
 
-async function resolveAddresses(hostname: string) {
-  const results = await Promise.allSettled([resolve4(hostname), resolve6(hostname)]);
-  return results.flatMap((result) => result.status === "fulfilled" ? result.value : []);
-}
-
 export async function secureEndpoint(raw: string) {
   let url: URL;
   try {
@@ -49,13 +43,12 @@ export async function secureEndpoint(raw: string) {
   if (url.port && url.port !== "443") throw new Error("仅允许标准 HTTPS 端口 443");
   if (url.hostname === "localhost" || url.hostname.endsWith(".local")) throw new Error("不允许访问本地网络");
 
-  const addresses = await resolveAddresses(url.hostname);
-  if (!addresses.length || addresses.some((address) => !isPublicAddress(address))) {
+  const hostname = url.hostname.replace(/^\[|\]$/g, "");
+  if (isIP(hostname) && !isPublicAddress(hostname)) {
     throw new Error("接口解析到私有、保留或不可用地址");
   }
 
-  const address = addresses.find((candidate) => isIP(candidate) === 4) ?? addresses[0];
-  return { url, address };
+  return { url };
 }
 
 export function endpointFor(base: URL, protocol: "openai" | "anthropic") {
