@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { endpointFor, secureEndpoint } from "@/lib/safe-endpoint";
 import {
-  classifyUpstreamError, estimateTokens, protocolShapeCheck, summarize, tokenChecks, usageFields,
-  type DetectionCheck, type Protocol,
+  classifyUpstreamError, estimateTokens, protocolShapeCheck, structuredOutputCheck, summarize,
+  tokenChecks, toolCallingCheck, usageFields, type DetectionCheck, type Protocol,
 } from "@/lib/detection";
 
 export const runtime = "nodejs";
@@ -12,7 +12,14 @@ let activeJobs = 0;
 const shortPrompt = "Reply with exactly SIGNALDECK_OK and nothing else.";
 const longPrompt = `${Array.from({ length: 90 }, (_, i) => `audit-marker-${i}`).join(" ")}\nReply with exactly SIGNALDECK_OK and nothing else.`;
 
-type Payload = { baseUrl?: string; apiKey?: string; model?: string; protocol?: Protocol; thinking?: boolean };
+type Payload = {
+  baseUrl?: string;
+  apiKey?: string;
+  model?: string;
+  protocol?: Protocol;
+  thinking?: boolean;
+  mode?: "standard" | "deep";
+};
 
 function rateLimited(ip: string) {
   const now = Date.now();
@@ -81,9 +88,10 @@ export async function POST(request: NextRequest) {
   try { input = await request.json() as Payload; } catch {
     return NextResponse.json({ error: "请求格式无效" }, { status: 400 });
   }
-  const { baseUrl, apiKey, model, protocol, thinking = false } = input;
+  const { baseUrl, apiKey, model, protocol, thinking = false, mode = "standard" } = input;
   if (!baseUrl || !apiKey || !model || !protocol) return NextResponse.json({ error: "请完整填写检测参数" }, { status: 400 });
   if (!["openai", "anthropic", "gemini"].includes(protocol)) return NextResponse.json({ error: "不支持的协议" }, { status: 400 });
+  if (!["standard", "deep"].includes(mode)) return NextResponse.json({ error: "不支持的检测模式" }, { status: 400 });
   if (apiKey.length < 8 || apiKey.length > 512 || model.length > 120) return NextResponse.json({ error: "密钥或模型名称格式无效" }, { status: 400 });
 
   activeJobs += 1;
@@ -98,13 +106,10 @@ export async function POST(request: NextRequest) {
       headers["anthropic-version"] = "2023-06-01";
     }
 
-    const call = async (prompt: string, stream = false, withThinking = false) => {
-      const body = protocol === "openai" || protocol === "gemini"
-        ? { model, messages: [{ role: "user", content: prompt }], temperature: 0, max_tokens: withThinking ? 1200 : 24, stream, ...(stream ? { stream_options: { include_usage: true } } : {}) }
-        : { model, messages: [{ role: "user", content: prompt }], temperature: 0, max_tokens: withThinking ? 1200 : 24, stream, ...(withThinking ? { thinking: { type: "enabled", budget_tokens: 1024 } } : {}) };
+    const requestUpstream = async (body: Record<string, unknown>, stream = false, timeout = 20_000) => {
       const response = await fetch(endpoint, {
         method: "POST", headers, body: JSON.stringify(body),
-        redirect: "manual", signal: AbortSignal.timeout(withThinking ? 35_000 : 20_000),
+        redirect: "manual", signal: AbortSignal.timeout(timeout),
       });
       if (response.status >= 300 && response.status < 400) {
         throw new Error("上游返回重定向，已为安全起见拒绝");
@@ -123,6 +128,13 @@ export async function POST(request: NextRequest) {
       try { return { text, data: JSON.parse(text) as Record<string, unknown> }; } catch {
         throw new Error("上游返回的不是有效 JSON");
       }
+    };
+
+    const call = async (prompt: string, stream = false, withThinking = false) => {
+      const body = protocol === "openai" || protocol === "gemini"
+        ? { model, messages: [{ role: "user", content: prompt }], temperature: 0, max_tokens: withThinking ? 1200 : 24, stream, ...(stream ? { stream_options: { include_usage: true } } : {}) }
+        : { model, messages: [{ role: "user", content: prompt }], temperature: 0, max_tokens: withThinking ? 1200 : 24, stream, ...(withThinking ? { thinking: { type: "enabled", budget_tokens: 1024 } } : {}) };
+      return requestUpstream(body, stream, withThinking ? 35_000 : 20_000);
     };
 
     const [short, long, streamed] = await Promise.all([
@@ -185,10 +197,92 @@ export async function POST(request: NextRequest) {
       });
     }
 
+    if (mode === "deep") {
+      const toolBody = protocol === "anthropic"
+        ? {
+            model,
+            messages: [{ role: "user", content: "Call signaldeck_probe with value set to ok." }],
+            max_tokens: 128,
+            tools: [{
+              name: "signaldeck_probe",
+              description: "Return the requested probe value.",
+              input_schema: {
+                type: "object",
+                properties: { value: { type: "string", enum: ["ok"] } },
+                required: ["value"],
+              },
+            }],
+            tool_choice: { type: "tool", name: "signaldeck_probe" },
+          }
+        : {
+            model,
+            messages: [{ role: "user", content: "Call signaldeck_probe with value set to ok." }],
+            max_tokens: 128,
+            tools: [{
+              type: "function",
+              function: {
+                name: "signaldeck_probe",
+                description: "Return the requested probe value.",
+                parameters: {
+                  type: "object",
+                  properties: { value: { type: "string", enum: ["ok"] } },
+                  required: ["value"],
+                  additionalProperties: false,
+                },
+              },
+            }],
+            tool_choice: { type: "function", function: { name: "signaldeck_probe" } },
+          };
+      try {
+        const toolResult = await requestUpstream(toolBody);
+        checks.push(toolCallingCheck(protocol, toolResult.data!));
+      } catch (error) {
+        checks.push({
+          id: "tool-calling", label: "Function / Tool Calling", status: "warn", weight: 10,
+          detail: "能力探针未完成；这不影响基础检测结果。",
+          evidence: error instanceof Error ? error.message : "未知错误",
+        });
+      }
+
+      if (protocol !== "anthropic") {
+        try {
+          const structured = await requestUpstream({
+            model,
+            messages: [{ role: "user", content: "Return a JSON object whose status is ok." }],
+            temperature: 0,
+            max_tokens: 64,
+            response_format: {
+              type: "json_schema",
+              json_schema: {
+                name: "signaldeck_result",
+                strict: true,
+                schema: {
+                  type: "object",
+                  properties: { status: { type: "string", enum: ["ok"] } },
+                  required: ["status"],
+                  additionalProperties: false,
+                },
+              },
+            },
+          });
+          checks.push(structuredOutputCheck(structured.data!));
+        } catch (error) {
+          checks.push({
+            id: "structured-output", label: "Structured Output", status: "warn", weight: 10,
+            detail: "结构化输出探针未完成；上游可能不支持 json_schema。",
+            evidence: error instanceof Error ? error.message : "未知错误",
+          });
+        }
+      }
+    }
+
     const summary = summarize(checks);
     return NextResponse.json({
-      ...summary, protocol, model, host: endpoint.hostname, durationMs: Date.now() - started,
-      checks, requestCount: thinking && protocol === "anthropic" ? 4 : 3,
+      ...summary, protocol, model, mode, host: endpoint.hostname, durationMs: Date.now() - started,
+      checks,
+      requestCount: 3
+        + (thinking && protocol === "anthropic" ? 1 : 0)
+        + (mode === "deep" ? protocol === "anthropic" ? 1 : 2 : 0),
       disclaimer: "本检测能发现协议转译、Token 增量异常与流式计数差异；不能替代供应商账单，也不能仅凭文本数学证明具体模型身份。",
     });
   } catch (error) {

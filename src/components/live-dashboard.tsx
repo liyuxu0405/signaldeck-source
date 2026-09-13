@@ -44,6 +44,7 @@ async function readJson<T>(response: Response): Promise<T> {
 
 export function LiveDashboard() {
   const [protocol, setProtocol] = useState<Protocol>("openai");
+  const [mode, setMode] = useState<"standard" | "deep">("standard");
   const [baseUrl, setBaseUrl] = useState("");
   const [apiKey, setApiKey] = useState("");
   const [model, setModel] = useState("");
@@ -97,8 +98,8 @@ export function LiveDashboard() {
       const response = await fetch("/api/detect", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ protocol, baseUrl, apiKey, model, thinking }),
-        signal: AbortSignal.timeout(thinking ? 65_000 : 30_000),
+        body: JSON.stringify({ protocol, baseUrl, apiKey, model, thinking, mode }),
+        signal: AbortSignal.timeout(mode === "deep" ? 100_000 : thinking ? 65_000 : 30_000),
       });
       const data = await readJson<Result & { error?: string }>(response);
       if (!response.ok) throw new Error(data.error || "检测请求失败");
@@ -147,6 +148,11 @@ export function LiveDashboard() {
             <div className="mt-6">
               <label className="text-sm font-medium">接口协议</label>
               <div className="mt-2 grid grid-cols-3 gap-1 rounded-lg bg-slate-100 p-1">{(["openai", "anthropic", "gemini"] as const).map(item => <button type="button" key={item} onClick={() => { setProtocol(item); setThinking(false); setProbe(null); setAvailableModels([]); setModel(""); }} className={`rounded-md px-2 py-2 text-xs font-medium sm:text-sm ${protocol === item ? "bg-white shadow-sm" : "text-slate-500"}`}>{item === "openai" ? "OpenAI" : item === "anthropic" ? "Anthropic" : "Gemini"}</button>)}</div>
+            </div>
+            <div className="mt-5">
+              <label className="text-sm font-medium">检测深度</label>
+              <div className="mt-2 grid grid-cols-2 gap-1 rounded-lg bg-slate-100 p-1">{(["standard", "deep"] as const).map(item => <button type="button" key={item} onClick={() => setMode(item)} className={`rounded-md px-3 py-2 text-sm font-medium ${mode === item ? "bg-white shadow-sm" : "text-slate-500"}`}>{item === "standard" ? "标准检测" : "深度检测"}</button>)}</div>
+              <p className="mt-2 text-xs leading-5 text-slate-500">{mode === "standard" ? "3 个低输出请求，检查协议与 Token 计数。" : `额外检查 ${protocol === "anthropic" ? "Tool Calling" : "Function Calling 与 Structured Output"}，会增加 ${protocol === "anthropic" ? 1 : 2} 个请求。`}</p>
             </div>
             <label className="mt-5 block text-sm font-medium">中转接口根地址</label>
             <Input className="mt-2" type="url" required value={baseUrl} onChange={e => { setBaseUrl(e.target.value); setProbe(null); setAvailableModels([]); setModel(""); }} placeholder={protocol === "anthropic" ? "https://relay.example.com" : "https://relay.example.com/v1"} />

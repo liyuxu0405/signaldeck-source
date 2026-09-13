@@ -105,6 +105,57 @@ export function classifyUpstreamError(status: number, message: string) {
   return `上游返回 ${status}：${message || "未知错误"}`;
 }
 
+export function toolCallingCheck(protocol: Protocol, data: Record<string, unknown>): DetectionCheck {
+  let valid = false;
+  let evidence = "未找到结构化工具调用";
+  if (protocol === "anthropic") {
+    const content = Array.isArray(data.content) ? data.content : [];
+    const block = content.map(record).find((item) => item?.type === "tool_use");
+    const input = record(block?.input);
+    valid = block?.name === "signaldeck_probe" && input?.value === "ok";
+    if (block) evidence = `type=${String(block.type)}；name=${String(block.name ?? "缺失")}`;
+  } else {
+    const choices = Array.isArray(data.choices) ? data.choices : [];
+    const message = record(record(choices[0])?.message);
+    const calls = Array.isArray(message?.tool_calls) ? message.tool_calls : [];
+    const call = record(calls[0]);
+    const fn = record(call?.function);
+    let args: Record<string, unknown> | undefined;
+    try {
+      args = typeof fn?.arguments === "string" ? record(JSON.parse(fn.arguments)) : undefined;
+    } catch { /* 无效 arguments 会作为失败证据 */ }
+    valid = fn?.name === "signaldeck_probe" && args?.value === "ok";
+    if (fn) evidence = `name=${String(fn.name ?? "缺失")}；arguments=${args ? "有效 JSON" : "无效"}`;
+  }
+  return {
+    id: "tool-calling",
+    label: "Function / Tool Calling",
+    status: valid ? "pass" : "fail",
+    weight: 10,
+    detail: valid ? "模型按指定 schema 返回了可解析的工具调用。" : "模型未按指定 schema 返回工具调用。",
+    evidence,
+  };
+}
+
+export function structuredOutputCheck(data: Record<string, unknown>): DetectionCheck {
+  const choices = Array.isArray(data.choices) ? data.choices : [];
+  const message = record(record(choices[0])?.message);
+  const content = message?.content;
+  let parsed: Record<string, unknown> | undefined;
+  try {
+    parsed = typeof content === "string" ? record(JSON.parse(content)) : undefined;
+  } catch { /* 非 JSON 内容会作为失败证据 */ }
+  const valid = parsed?.status === "ok";
+  return {
+    id: "structured-output",
+    label: "Structured Output",
+    status: valid ? "pass" : "fail",
+    weight: 10,
+    detail: valid ? "模型严格返回了符合 JSON Schema 的对象。" : "模型未返回符合指定 Schema 的 JSON。",
+    evidence: parsed ? `status=${String(parsed.status ?? "缺失")}` : "响应内容不是有效 JSON 对象",
+  };
+}
+
 export function tokenChecks(
   protocol: Protocol,
   usage: UsageSnapshot,
@@ -157,11 +208,13 @@ export function tokenChecks(
 }
 
 export function summarize(checks: DetectionCheck[]) {
-  const score = Math.max(0, Math.round(checks.reduce((total, check) => {
+  const earned = checks.reduce((total, check) => {
     if (check.status === "pass") return total + check.weight;
     if (check.status === "warn") return total + check.weight * 0.5;
     return total;
-  }, 0)));
+  }, 0);
+  const available = checks.reduce((total, check) => total + check.weight, 0);
+  const score = Math.max(0, Math.min(100, Math.round(available ? earned / available * 100 : 0)));
   const critical = checks.some((check) => check.critical && check.status === "fail");
   const verdict = critical || score < 50 ? "高风险" : score < 75 ? "需观察" : "未见明显异常";
   return { score, verdict };

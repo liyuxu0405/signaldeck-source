@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
-  classifyUpstreamError, estimateTokens, protocolShapeCheck, summarize, tokenChecks, usageFields,
+  classifyUpstreamError, estimateTokens, protocolShapeCheck, structuredOutputCheck, summarize,
+  tokenChecks, toolCallingCheck, usageFields,
 } from "./detection";
 import { endpointFor, isPublicAddress, modelsEndpointFor, secureEndpoint } from "./safe-endpoint";
 
@@ -61,6 +62,25 @@ describe("Token 风险分析", () => {
     expect(classifyUpstreamError(401, "")).toContain("认证失败");
     expect(classifyUpstreamError(429, "insufficient quota")).toContain("额度不足");
     expect(classifyUpstreamError(404, "model not found")).toContain("模型不存在");
+  });
+
+  it("校验工具调用与结构化输出探针", () => {
+    expect(toolCallingCheck("openai", {
+      choices: [{ message: { tool_calls: [{ function: { name: "signaldeck_probe", arguments: "{\"value\":\"ok\"}" } }] } }],
+    }).status).toBe("pass");
+    expect(toolCallingCheck("anthropic", {
+      content: [{ type: "tool_use", name: "signaldeck_probe", input: { value: "ok" } }],
+    }).status).toBe("pass");
+    expect(structuredOutputCheck({
+      choices: [{ message: { content: "{\"status\":\"ok\"}" } }],
+    }).status).toBe("pass");
+  });
+
+  it("按可用权重归一化总分", () => {
+    expect(summarize([
+      { id: "pass", label: "pass", status: "pass", weight: 10, detail: "" },
+      { id: "fail", label: "fail", status: "fail", weight: 10, detail: "" },
+    ]).score).toBe(50);
   });
 
   it("分词基线随文本增长", () => {
