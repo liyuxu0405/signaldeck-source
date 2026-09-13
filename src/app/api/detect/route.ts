@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from "next/server";
-import { fetch } from "undici";
 import { endpointFor, secureEndpoint } from "@/lib/safe-endpoint";
 import { estimateTokens, summarize, tokenChecks, usageFields, type DetectionCheck } from "@/lib/detection";
 
@@ -106,10 +105,10 @@ export async function POST(request: NextRequest) {
         ? { model, messages: [{ role: "user", content: prompt }], temperature: 0, max_tokens: withThinking ? 1200 : 24, stream, ...(stream ? { stream_options: { include_usage: true } } : {}) }
         : { model, messages: [{ role: "user", content: prompt }], temperature: 0, max_tokens: withThinking ? 1200 : 24, stream, ...(withThinking ? { thinking: { type: "enabled", budget_tokens: 1024 } } : {}) };
       const response = await fetch(endpoint, {
-        method: "POST", headers, body: JSON.stringify(body), dispatcher: safe!.dispatcher,
+        method: "POST", headers, body: JSON.stringify(body),
         redirect: "error", signal: AbortSignal.timeout(withThinking ? 35_000 : 20_000),
       });
-      const text = await limitedText(response as unknown as Response);
+      const text = await limitedText(response);
       if (!response.ok) {
         if (response.status === 401 || response.status === 403) {
           throw new Error(`上游返回 ${response.status}：认证失败，请检查专用 API Key 与模型权限`);
@@ -200,6 +199,5 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: message.includes(apiKey) ? "检测失败，已隐藏敏感信息" : message }, { status: 422 });
   } finally {
     activeJobs -= 1;
-    if (safe) await safe.dispatcher.close();
   }
 }

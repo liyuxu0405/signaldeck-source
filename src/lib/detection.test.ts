@@ -48,8 +48,11 @@ describe("安全接口边界", () => {
     expect(isPublicAddress("127.0.0.1")).toBe(false);
     expect(isPublicAddress("10.0.0.1")).toBe(false);
     expect(isPublicAddress("169.254.1.1")).toBe(false);
+    expect(isPublicAddress("198.18.2.171")).toBe(false);
+    expect(isPublicAddress("203.0.113.1")).toBe(false);
     expect(isPublicAddress("::1")).toBe(false);
     expect(isPublicAddress("fd00::1")).toBe(false);
+    expect(isPublicAddress("2001:db8::1")).toBe(false);
   });
 
   it("允许公网地址并规范协议路径", () => {
