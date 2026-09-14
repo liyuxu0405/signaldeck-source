@@ -20,6 +20,7 @@ export default function BusinessPage() {
       <p className="mt-4 max-w-2xl text-sm leading-7 text-slate-600">{monetizationPolicy}</p>
       <p className="mt-2 text-sm text-slate-500">
         商务邮箱 <a className="text-[#176b5b] underline" href={`mailto:${businessContact.email}`}>{businessContact.email}</a>
+        。表单线索请到 <Link className="text-[#176b5b]" href="/admin">/admin</Link> 查看，不会自动发邮件。
       </p>
 
       <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">

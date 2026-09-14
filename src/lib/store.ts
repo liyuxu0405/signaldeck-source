@@ -44,9 +44,20 @@ export async function getStore(): Promise<KvLike> {
     const { getCloudflareContext } = await import("@opennextjs/cloudflare");
     const ctx = await getCloudflareContext({ async: true });
     const kv = (ctx.env as { SIGNALDECK?: KvLike }).SIGNALDECK;
-    if (kv) return kv;
+    if (kv) {
+      return {
+        get: (key) => kv.get(key),
+        put: (key, value, options) => kv.put(key, value, options),
+        delete: async (key) => {
+          if (typeof kv.delete === "function") await kv.delete(key);
+        },
+      };
+    }
   } catch {
     /* next dev 无 Worker 绑定，使用进程内存储 */
+  }
+  if (process.env.NODE_ENV === "production") {
+    throw new Error("Cloudflare KV 未绑定，无法保存商务线索");
   }
   return memoryStore;
 }
@@ -91,6 +102,7 @@ export async function saveLead(payload: Record<string, string>) {
   }
   if (!Array.isArray(index)) index = [];
   await store.put("lead-index", JSON.stringify([id, ...index].slice(0, 200)));
+  return record;
 }
 
 export async function listLeads() {
