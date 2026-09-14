@@ -3,6 +3,7 @@ import { catalogStations } from "./catalog";
 import { getAffiliate, getCommercialDestination, inventorySummary } from "./marketplace";
 import { buildStationBoard } from "./rank";
 import { sanitizeReport } from "./report";
+import { listingIsLive, type ListingApplication } from "./store";
 
 const sample = {
   score: 82,
@@ -56,17 +57,48 @@ describe("变现库存与报告安全", () => {
     const empty = buildStationBoard([]);
     expect(empty.ranked).toEqual([]);
     expect(empty.pending.length).toBe(catalogStations.length);
+    const target = catalogStations[0];
     const scored = buildStationBoard([{
       id: "abc12345zz",
       createdAt: "2026-09-14T00:00:00.000Z",
-      host: "api.deepseek.com",
-      protocol: "openai",
-      model: "deepseek-chat",
+      host: target.domain,
+      protocol: target.protocol,
+      model: "relay-test-model",
       score: 88,
       verdict: "未见明显异常",
     }]);
-    expect(scored.ranked[0]?.domain).toBe("api.deepseek.com");
+    expect(scored.ranked[0]?.domain).toBe(target.domain);
     expect(scored.ranked[0]?.score).toBe(88);
     expect(scored.pending.length).toBe(catalogStations.length - 1);
+
+    const omniakey = catalogStations.find((item) => item.domain === "omniakey.com")!;
+    const viaApiHost = buildStationBoard([{
+      id: "omniakeyreport",
+      createdAt: "2026-09-14T00:00:00.000Z",
+      host: "api.omniakey.com",
+      protocol: "openai",
+      model: "relay-test-model",
+      score: 91,
+      verdict: "未见明显异常",
+    }]);
+    expect(viaApiHost.ranked.find((item) => item.domain === "omniakey.com")?.score).toBe(91);
+    expect(viaApiHost.ranked.find((item) => item.domain === "omniakey.com")?.endpoint).toBe(omniakey.endpoint);
+  });
+
+  it("未标记收款的申请即使点过开通也不进入公开展示", () => {
+    const base: ListingApplication = {
+      id: "app1",
+      email: "a@example.com",
+      name: "肥猫",
+      domain: "api.999555999.com",
+      summary: "test",
+      href: "https://api.999555999.com",
+      packageId: "pro",
+      status: "approved",
+      createdAt: "2026-09-14T00:00:00.000Z",
+    };
+    expect(listingIsLive(base)).toBe(false);
+    expect(listingIsLive({ ...base, paidAt: "2026-09-14T01:00:00.000Z" })).toBe(true);
+    expect(listingIsLive({ ...base, status: "pending", paidAt: "2026-09-14T01:00:00.000Z" })).toBe(false);
   });
 });

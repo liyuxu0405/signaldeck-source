@@ -10,7 +10,8 @@ import { cn } from "cn";
 
 const links = [
   { href: "/", label: "现场检测" },
-  { href: "/directory", label: "公开榜" },
+  { href: "/directory", label: "中转站目录" },
+  { href: "/reports", label: "公开报告" },
   { href: "/faq", label: "FAQ" },
   { href: "/business", label: "商务合作" },
 ];
@@ -69,10 +70,10 @@ export function SiteHeader() {
 export function SiteFooter() {
   return (
     <footer className="border-t border-slate-200 bg-white">
-      <div className="mx-auto flex max-w-7xl flex-col gap-3 px-4 py-8 text-sm text-slate-500 sm:flex-row sm:justify-between sm:px-6">
+      <div className="mx-auto flex max-w-7xl flex-col gap-3 px-4 py-8 text-sm text-slate-500 sm:flex-row sm:items-center sm:justify-between sm:px-6">
         <span className="font-semibold text-slate-800">SignalDeck</span>
         <span>付费只买展示位置，不买检测分数。</span>
-        <a className="text-[#176b5b]" href="https://github.com/liyuxu0405/signaldeck-source/issues">GitHub 交流</a>
+        <span className="flex flex-wrap gap-4"><Link href="/privacy">隐私政策</Link><Link href="/terms">条款与广告披露</Link><a className="text-[#176b5b]" href="https://github.com/liyuxu0405/signaldeck-source/issues">GitHub 交流</a></span>
       </div>
     </footer>
   );

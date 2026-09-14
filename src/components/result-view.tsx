@@ -5,6 +5,8 @@ import { AlertTriangle, CheckCircle2, Clock3, Link2, Sparkles, XCircle } from "l
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import type { DetectionCheck } from "@/lib/detection";
+import { stationDisplayName, stationLogoUrl } from "@/lib/catalog";
+import { StationIdentity } from "@/components/station-identity";
 
 export type ResultPayload = {
   score: number;
@@ -35,6 +37,7 @@ export function ResultView({
   publishToken?: string;
 }) {
   const color = result.score >= 75 ? "#19745f" : result.score >= 50 ? "#b07920" : "#b33c3c";
+  const stationName = stationDisplayName(result.host);
   const [shareUrl, setShareUrl] = useState("");
   const [shareError, setShareError] = useState("");
   const [sharing, setSharing] = useState(false);
@@ -74,8 +77,8 @@ export function ResultView({
           </div>
           <div>
             <Badge variant="outline">{result.verdict}</Badge>
-            <h2 className="mt-2 font-bold">{result.host}</h2>
-            <p className="text-xs text-slate-500">{result.protocol} · {result.model}</p>
+            <div className="mt-2"><StationIdentity name={stationName} logoUrl={stationLogoUrl(result.host)} /></div>
+            <p className="mt-1 text-xs text-slate-500">{result.host} · {result.protocol} · {result.model}</p>
           </div>
         </div>
         <div className="flex flex-col items-start gap-2 sm:items-end">
@@ -107,7 +110,7 @@ export function ResultView({
                   <Icon className={`size-4 ${check.status === "pass" ? "text-emerald-600" : check.status === "warn" ? "text-amber-600" : "text-red-600"}`} />
                   {check.label}
                 </div>
-                <Badge variant="outline" className={meta.style}>{meta.label} · {check.weight}分</Badge>
+                <Badge variant="outline" className={meta.style}>{check.scored === false ? "说明项" : `${meta.label} · ${check.weight}分`}</Badge>
               </div>
               <p className="mt-2 text-sm leading-6 text-slate-600">{check.detail}</p>
               {check.evidence && <code className="mt-2 block overflow-x-auto rounded-md bg-slate-50 p-2 text-xs text-slate-500">{check.evidence}</code>}

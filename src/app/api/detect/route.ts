@@ -5,7 +5,7 @@ import { saveReportDraft } from "@/lib/store";
 import {
   classifyUpstreamError, estimateTokens, extractAssistantText, instructionFollowCheck, longContextCheck,
   outputBoundCheck, protocolShapeCheck, stopReasonCheck, streamShapeCheck, structuredOutputCheck, summarize,
-  thinkingSignatureCheck, tokenChecks, toolCallingCheck, usageFields, type DetectionCheck, type Protocol,
+  thinkingSignatureCheck, tokenChecks, toolCallingCheck, usageFingerprintCheck, type DetectionCheck, type Protocol,
 } from "@/lib/detection";
 
 export const runtime = "nodejs";
@@ -155,7 +155,6 @@ export async function POST(request: NextRequest) {
     const shortData = short.data!;
     const longData = long.data!;
     const rawUsage = shortData.usage;
-    const foreign = usageFields(protocol, rawUsage);
     const responseModel = typeof shortData.model === "string" ? shortData.model : undefined;
     const shape = protocolShapeCheck(protocol, shortData);
     let referenceShort = estimateTokens(shortPrompt);
@@ -188,12 +187,7 @@ export async function POST(request: NextRequest) {
         evidence: `目标 ${endpoint.hostname}；Cloudflare 公网隔离路由`,
       },
       shape,
-      {
-        id: "foreign-fields", label: "异源字段指纹", status: foreign.length ? "fail" : "pass", weight: 10,
-        detail: foreign.length ? "发现其他厂商协议的计数字段，疑似存在适配或转译层。" : "未在 usage 中发现已知的跨厂商字段。",
-        evidence: foreign.length ? foreign.join(", ") : "未命中已知异源字段",
-        critical: foreign.length > 0,
-      },
+      usageFingerprintCheck(protocol, rawUsage),
       {
         id: "model", label: "模型字段一致性", status: responseModel ? (responseModel.toLowerCase().includes(model.toLowerCase()) || model.toLowerCase().includes(responseModel.toLowerCase()) ? "pass" : "warn") : "warn", weight: 10,
         detail: responseModel ? `请求 ${model}，响应 ${responseModel}。模型字段可被中转层改写，仅作为辅助证据。` : "响应未提供 model 字段。",
@@ -241,6 +235,7 @@ export async function POST(request: NextRequest) {
     } else {
       checks.push({
         id: "identity-boundary", label: "身份判断边界", status: "warn", weight: 15,
+        scored: false,
         detail: `${protocol === "gemini" ? "Gemini OpenAI 兼容" : "OpenAI Chat Completions"}没有可由本服务独立验证的模型签名，本结果只能判断协议与计数异常，不能证明高配模型未被替换。`,
       });
     }
@@ -326,7 +321,7 @@ export async function POST(request: NextRequest) {
 
     const summary = summarize(checks);
     const result = issueReport({
-      ...summary, protocol, model, mode, host: endpoint.hostname, durationMs: Date.now() - started,
+      ...summary, protocol, model, mode, host: endpoint.hostname, baseUrl: safe.url.toString().replace(/\/$/, ""), durationMs: Date.now() - started,
       checks,
       requestCount: 3
         + countTokenRequests

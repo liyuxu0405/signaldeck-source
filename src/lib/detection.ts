@@ -11,6 +11,7 @@ export type DetectionCheck = {
   detail: string;
   evidence?: string;
   critical?: boolean;
+  scored?: boolean;
 };
 
 export type UsageSnapshot = {
@@ -46,6 +47,22 @@ export function usageFields(protocol: Protocol, usage: unknown) {
   return keys.filter((key) => key.startsWith("gemini_") || key === "prompt_tokens" || key === "completion_tokens");
 }
 
+export function usageFingerprintCheck(protocol: Protocol, usage: unknown): DetectionCheck {
+  const fields = usageFields(protocol, usage);
+  return {
+    id: "foreign-fields",
+    label: "兼容层字段提示",
+    status: fields.length ? "warn" : "pass",
+    weight: 0,
+    scored: false,
+    critical: false,
+    detail: fields.length
+      ? "响应包含其他生态常见的 usage 扩展字段，说明网关可能做了适配；这本身不代表模型伪装或计费异常。"
+      : "未发现需要说明的跨生态 usage 扩展字段。",
+    evidence: fields.length ? fields.join(", ") : "未命中已知扩展字段",
+  };
+}
+
 function record(value: unknown): Record<string, unknown> | undefined {
   return value && typeof value === "object" && !Array.isArray(value)
     ? value as Record<string, unknown>
@@ -77,18 +94,18 @@ export function protocolShapeCheck(protocol: Protocol, data: Record<string, unkn
   const first = record(choices[0]);
   const valid = Boolean(record(first?.message)) && Boolean(usage);
   const expectedObject = data.object === "chat.completion";
-  const standardId = typeof data.id === "string" && data.id.startsWith("chatcmpl-");
+  const hasResponseId = typeof data.id === "string" && data.id.length > 0;
   return {
     id: "protocol",
     label: `${protocol === "gemini" ? "Gemini OpenAI 兼容" : "OpenAI"}响应结构`,
-    status: !valid ? "fail" : expectedObject && standardId ? "pass" : "warn",
+    status: !valid ? "fail" : expectedObject && hasResponseId ? "pass" : "warn",
     weight: 15,
     critical: !valid,
     detail: !valid
       ? "响应缺少 choices.message 或 usage 核心字段。"
-      : expectedObject && standardId
+      : expectedObject && hasResponseId
         ? "响应结构与 Chat Completions 协议一致。"
-        : "核心结构有效，但 object 或响应 ID 使用了非标准格式。",
+        : "核心结构有效，但缺少 Chat Completions object 或响应 ID。",
     evidence: `object=${String(data.object ?? "缺失")}；id=${typeof data.id === "string" ? data.id.slice(0, 24) : "缺失"}`,
   };
 }
@@ -189,6 +206,7 @@ export function tokenChecks(
       label: providerReference ? "Anthropic count_tokens 核对" : "Token 增量估算参考",
       status: !monotonic ? "fail" : providerReference ? plausible ? "pass" : "fail" : "warn",
       weight: 22,
+      scored: providerReference || !monotonic,
       critical: !monotonic || (providerReference && !plausible),
       detail: !monotonic
         ? "更长输入的上报 Token 未增加，存在可复核的计数异常。"
@@ -298,6 +316,7 @@ export function longContextCheck(enabled: boolean, longInput?: number, contextIn
       label: "长上下文抽样",
       status: "warn",
       weight: 8,
+      scored: false,
       detail: "未启用水窗抽样。该项只验证更长输入的 usage 是否继续上升，不是官方百万级上下文账单证明。",
     };
   }
@@ -322,6 +341,7 @@ export function thinkingSignatureCheck(enabled: boolean, signature: unknown): De
       label: "Thinking signature 存在性",
       status: "warn",
       weight: 10,
+      scored: false,
       detail: "未启用该探针。启用后只检查 opaque signature 的存在与长度，权重较高，但不做离线密码学验签。",
     };
   }
@@ -340,12 +360,13 @@ export function thinkingSignatureCheck(enabled: boolean, signature: unknown): De
 }
 
 export function summarize(checks: DetectionCheck[]) {
-  const earned = checks.reduce((total, check) => {
+  const scored = checks.filter((check) => check.scored !== false);
+  const earned = scored.reduce((total, check) => {
     if (check.status === "pass") return total + check.weight;
     if (check.status === "warn") return total + check.weight * 0.5;
     return total;
   }, 0);
-  const available = checks.reduce((total, check) => total + check.weight, 0);
+  const available = scored.reduce((total, check) => total + check.weight, 0);
   const score = Math.max(0, Math.min(100, Math.round(available ? earned / available * 100 : 0)));
   const critical = checks.some((check) => check.critical && check.status === "fail");
   const verdict = critical || score < 50 ? "高风险" : score < 75 ? "需观察" : "未见明显异常";

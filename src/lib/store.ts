@@ -1,5 +1,6 @@
 import { newPublishToken, toIndexItem, type PublicReport, type ReportIndexItem } from "./report";
 import type { Listing } from "./marketplace";
+import { campaignIsActive, validateCampaign, type CampaignRecord } from "./campaign";
 
 export type UserRecord = { email: string; password: string; createdAt: string };
 
@@ -24,6 +25,10 @@ export type ListingApplication = {
   group?: string;
   status: "pending" | "approved" | "rejected";
   createdAt: string;
+  paidAt?: string;
+  usdtAmount?: string;
+  usdtMicro?: string;
+  usdtTxHash?: string;
   verificationToken?: string;
   domainVerifiedAt?: string;
 };
@@ -300,6 +305,33 @@ export async function consumeRateLimit(
   return true;
 }
 
+export async function saveCampaign(campaign: CampaignRecord, target?: KvLike) {
+  const record = validateCampaign(campaign);
+  const store = target ?? await getStore();
+  await store.put(`campaign:${record.id}`, JSON.stringify(record));
+  const ids = await readIdList(store, "campaign-index");
+  await store.put("campaign-index", JSON.stringify([record.id, ...ids.filter((id) => id !== record.id)].slice(0, 500)));
+  return record;
+}
+
+export async function readCampaign(id: string, target?: KvLike) {
+  if (!/^[a-z0-9][a-z0-9._-]{1,79}$/.test(id)) return null;
+  const raw = await (target ?? await getStore()).get(`campaign:${id}`);
+  if (!raw) return null;
+  try { return validateCampaign(JSON.parse(raw) as CampaignRecord); } catch { return null; }
+}
+
+export async function listCampaigns(target?: KvLike) {
+  const store = target ?? await getStore();
+  const ids = await readIdList(store, "campaign-index");
+  const rows = await Promise.all(ids.map((id) => readCampaign(id, store)));
+  return rows.filter((item): item is CampaignRecord => item !== null);
+}
+
+export async function listActiveCampaigns(at = Date.now(), target?: KvLike) {
+  return (await listCampaigns(target)).filter((campaign) => campaignIsActive(campaign, at));
+}
+
 async function readIndex(store: KvLike): Promise<ReportIndexItem[]> {
   const raw = await store.get(INDEX_KEY);
   if (!raw) return [];
@@ -370,9 +402,22 @@ export async function listApplications(email?: string) {
   return rows.filter((item): item is ListingApplication => item !== null && (!email || item.email === email));
 }
 
+export async function claimUsdtTx(txHash: string, applicationId: string) {
+  const store = await getStore();
+  const key = `usdt-tx:${txHash}`;
+  const existing = await store.get(key);
+  if (existing && existing !== applicationId) return false;
+  await store.put(key, applicationId);
+  return true;
+}
+
+export function listingIsLive(item: ListingApplication) {
+  return item.status === "approved" && Boolean(item.paidAt);
+}
+
 export async function approvedOperatorListings(): Promise<Listing[]> {
   const apps = await listApplications();
-  return apps.filter((item) => item.status === "approved").map((item) => ({
+  return apps.filter(listingIsLive).map((item) => ({
     id: item.id,
     name: item.name,
     domain: item.domain,

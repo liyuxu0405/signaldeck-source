@@ -14,8 +14,13 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "SignalDeck｜AI 接口透明度监测",
-  description: "用真实请求核验 AI 中转接口。检测免费；广告、收录与联盟可售，分数与付费无关。",
+  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL ?? "https://signaldeck.org"),
+  title: { default: "SignalDeck｜AI API 中转站透明度监测", template: "%s｜SignalDeck" },
+  description: "用真实请求核验 AI 中转接口的 Token 计费、协议兼容与 Agent 能力；浏览独立目录和服务端签发的公开报告。",
+  keywords: ["AI API", "中转站", "Claude 中转站", "OpenAI 中转站", "Gemini 中转站", "Token 检测"],
+  openGraph: { type: "website", locale: "zh_CN", siteName: "SignalDeck" },
+  twitter: { card: "summary_large_image" },
+  robots: { index: true, follow: true },
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

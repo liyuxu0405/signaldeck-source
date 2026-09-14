@@ -1,4 +1,4 @@
-import { catalogStations, hostFromEndpoint } from "./catalog";
+import { catalogAliasHosts, catalogStations } from "./catalog";
 import type { ReportIndexItem } from "./report";
 
 export type RankedStation = {
@@ -67,13 +67,13 @@ export function buildStationBoard(reports: ReportIndexItem[], options: RankingOp
   const covered = new Set<string>();
 
   for (const station of catalogStations) {
-    const host = hostFromEndpoint(station.endpoint) || station.domain;
-    covered.add(host);
-    const aggregate = calculateHistoricalScore(grouped.get(host) ?? [], options);
+    const aliases = catalogAliasHosts(station);
+    for (const host of aliases) covered.add(host);
+    const aggregate = calculateHistoricalScore(aliases.flatMap((host) => grouped.get(host) ?? []), options);
     const report = aggregate?.latest;
     const row: RankedStation = {
       name: station.name,
-      domain: host,
+      domain: station.domain,
       endpoint: station.endpoint,
       protocol: report?.protocol ?? station.protocol,
       summary: station.summary,

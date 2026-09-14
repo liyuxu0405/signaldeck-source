@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   classifyUpstreamError, estimateTokens, instructionFollowCheck, longContextCheck, protocolShapeCheck,
-  structuredOutputCheck, summarize, thinkingSignatureCheck, tokenChecks, toolCallingCheck, usageFields,
+  structuredOutputCheck, summarize, thinkingSignatureCheck, tokenChecks, toolCallingCheck, usageFingerprintCheck, usageFields,
 } from "./detection";
 import {
   countTokensEndpointFor, endpointFor, isPublicAddress, modelsEndpointFor, secureEndpoint,
@@ -18,6 +18,7 @@ describe("Token 风险分析", () => {
     });
     expect(checks.map((check) => check.status)).toEqual(["warn", "pass"]);
     expect(checks[0].critical).toBe(false);
+    expect(checks[0].scored).toBe(false);
   });
 
   it("官方计数与 usage 显著偏离时判定关键异常", () => {
@@ -39,6 +40,22 @@ describe("Token 风险分析", () => {
       total_tokens: 13,
       usage_source: "anthropic",
     })).toEqual(["usage_source"]);
+  });
+
+  it("兼容层缓存字段只作信息提示，不判为关键异常", () => {
+    const check = usageFingerprintCheck("openai", { cache_creation_input_tokens: 12 });
+    expect(check.status).toBe("warn");
+    expect(check.critical).toBe(false);
+    expect(check.scored).toBe(false);
+  });
+
+  it("OpenAI 兼容响应不要求 chatcmpl ID 前缀", () => {
+    expect(protocolShapeCheck("openai", {
+      id: "gen_01M2F11FKGWYK9873VGM",
+      object: "chat.completion",
+      choices: [{ message: { role: "assistant", content: "ok" } }],
+      usage: { prompt_tokens: 10 },
+    }).status).toBe("pass");
   });
 
   it("严重失败会锁定为高风险", () => {
@@ -85,6 +102,13 @@ describe("Token 风险分析", () => {
       { id: "pass", label: "pass", status: "pass", weight: 10, detail: "" },
       { id: "fail", label: "fail", status: "fail", weight: 10, detail: "" },
     ]).score).toBe(50);
+  });
+
+  it("未启用或仅作说明的检查不进入评分分母", () => {
+    expect(summarize([
+      { id: "pass", label: "pass", status: "pass", weight: 10, detail: "" },
+      { id: "info", label: "info", status: "warn", weight: 30, detail: "", scored: false },
+    ]).score).toBe(100);
   });
 
   it("长上下文与 thinking 探针使用独立判定", () => {

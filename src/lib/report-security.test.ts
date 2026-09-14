@@ -31,6 +31,7 @@ const rawResult = {
   protocol: "openai",
   model: "gpt-test",
   host: "api.example.com",
+  baseUrl: "https://api.example.com/gateway",
   durationMs: 1200,
   requestCount: 3,
   disclaimer: "仅供风险核验。",
@@ -45,11 +46,40 @@ describe("服务端签发报告", () => {
     const report = issueReport(rawResult, "2026-09-14T00:00:00.000Z");
     expect(report.score).toBe(50);
     expect(report.verdict).toBe("高风险");
+    expect(report.baseUrl).toBe("https://api.example.com/gateway");
     expect(report.id).toMatch(/^[a-z0-9]{8,20}$/);
   });
 
   it("生成 256 位发布凭据", () => {
     expect(newPublishToken()).toMatch(/^[a-f0-9]{64}$/);
+  });
+
+  it("不会把 token-billing 等正常检测项误判为 API 密钥", () => {
+    expect(() => issueReport({
+      ...rawResult,
+      checks: [{
+        id: "token-billing",
+        label: "Token 计数交叉验证",
+        status: "pass",
+        weight: 10,
+        detail: "Token 增量符合预期。",
+        evidence: "上报 12 → 24（Δ12）",
+      }],
+    }, "2026-09-14T00:00:00.000Z")).not.toThrow();
+  });
+
+  it("仍然拒绝报告文本中的高置信度密钥", () => {
+    expect(() => issueReport({
+      ...rawResult,
+      checks: [{
+        id: "upstream-error",
+        label: "上游错误",
+        status: "warn",
+        weight: 0,
+        detail: "上游返回错误",
+        evidence: "Authorization: Bearer sk-proj-AbCdEf1234567890",
+      }],
+    }, "2026-09-14T00:00:00.000Z")).toThrow("报告疑似包含密钥片段");
   });
 
   it("只通过哈希键保存短期草稿，并可幂等发布原始报告", async () => {

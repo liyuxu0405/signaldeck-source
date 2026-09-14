@@ -1,0 +1,30 @@
+<svg width="256" height="256" viewBox="0 0 256 256" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <title>LoomCode Logo</title>
+  <rect width="256" height="256" rx="58" fill="#08111A"/>
+  <rect x="17" y="17" width="222" height="222" rx="48" fill="#0D1724" stroke="url(#frame)" stroke-width="8"/>
+  <path d="M66 154V82" stroke="url(#loom)" stroke-width="24" stroke-linecap="round"/>
+  <path d="M66 154H109" stroke="url(#loom)" stroke-width="24" stroke-linecap="round"/>
+  <circle cx="146" cy="128" r="34" stroke="url(#loom)" stroke-width="20"/>
+  <circle cx="146" cy="128" r="8" fill="#8A55F7"/>
+  <path d="M187 157V104C187 96 197 92 203 98L218 114" stroke="url(#warm)" stroke-width="20" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="218" cy="158" r="11" fill="#FF8B45"/>
+  <rect x="54" y="48" width="22" height="22" rx="7" fill="#18A7FF"/>
+  <rect x="83" y="70" width="19" height="19" rx="6" fill="#287DFF"/>
+  <defs>
+    <linearGradient id="frame" x1="28" y1="28" x2="228" y2="228" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#18A7FF"/>
+      <stop offset="0.58" stop-color="#9B3FF4"/>
+      <stop offset="1" stop-color="#FF8B45"/>
+    </linearGradient>
+    <linearGradient id="loom" x1="54" y1="76" x2="178" y2="170" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#18C8FF"/>
+      <stop offset="0.48" stop-color="#287DFF"/>
+      <stop offset="1" stop-color="#B834F5"/>
+    </linearGradient>
+    <linearGradient id="warm" x1="182" y1="94" x2="230" y2="164" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#C13EF0"/>
+      <stop offset="0.55" stop-color="#F15A72"/>
+      <stop offset="1" stop-color="#FF9A3D"/>
+    </linearGradient>
+  </defs>
+</svg>

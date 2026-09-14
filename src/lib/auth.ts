@@ -16,6 +16,15 @@ export function validDomainVerificationToken(token: string) {
   return /^[a-f0-9]{64}$/.test(token);
 }
 
+export function randomDomainVerificationToken() {
+  return Array.from(crypto.getRandomValues(new Uint8Array(32)), (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+export async function issueDomainVerificationToken(email: string, domain: string, secret?: string) {
+  if (secret && secret.length >= 32) return domainVerificationToken(email, domain, secret);
+  return randomDomainVerificationToken();
+}
+
 export async function domainVerificationToken(email: string, domain: string, secret: string) {
   if (secret.length < 32) throw new Error("DOMAIN_VERIFICATION_SECRET 至少需要 32 个字符");
   const key = await crypto.subtle.importKey(

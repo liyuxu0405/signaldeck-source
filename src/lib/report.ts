@@ -1,7 +1,8 @@
 import { summarize, type CheckStatus, type DetectionCheck, type Protocol } from "./detection";
 
 const statuses = new Set<CheckStatus>(["pass", "warn", "fail"]);
-const secretPattern = /\b(?:sk|key|token|api[_-]?key)-[A-Za-z0-9_.*-]{4,}/i;
+// 只匹配高置信度凭据格式；`token-billing` 等检测项 ID 不是密钥。
+const secretPattern = /\bsk-(?:ant-|proj-)?[A-Za-z0-9_-]{8,}\b|\bBearer\s+[A-Za-z0-9._-]{12,}\b|\bAIza[A-Za-z0-9_-]{20,}\b/i;
 
 export type PublicReport = {
   id: string;
@@ -11,6 +12,7 @@ export type PublicReport = {
   protocol: Protocol;
   model: string;
   host: string;
+  baseUrl: string;
   durationMs: number;
   requestCount: number;
   mode?: "standard" | "deep";
@@ -22,6 +24,7 @@ export type ReportIndexItem = {
   id: string;
   createdAt: string;
   host: string;
+  baseUrl?: string;
   protocol: Protocol;
   model: string;
   score: number;
@@ -57,6 +60,7 @@ export function sanitizeReport(input: unknown, id: string, createdAt: string): P
   }
 
   const host = asHost(raw.host);
+  const baseUrl = asBaseUrl(raw.baseUrl, host);
   const model = asText(raw.model, 120);
   const disclaimer = asText(raw.disclaimer, 400);
   const durationMs = asInt(raw.durationMs, 1, 300_000);
@@ -65,7 +69,7 @@ export function sanitizeReport(input: unknown, id: string, createdAt: string): P
   const checks = sanitizeChecks(raw.checks);
   const { score, verdict } = summarize(checks);
   const payload: PublicReport = {
-    id, createdAt, score, verdict, protocol, model, host, durationMs, requestCount, mode, disclaimer, checks,
+    id, createdAt, score, verdict, protocol, model, host, baseUrl, durationMs, requestCount, mode, disclaimer, checks,
   };
   const serialized = JSON.stringify(payload);
   if (serialized.length > 40_000) throw new Error("报告过大，无法公开");
@@ -78,6 +82,7 @@ export function toIndexItem(report: PublicReport): ReportIndexItem {
     id: report.id,
     createdAt: report.createdAt,
     host: report.host,
+    baseUrl: report.baseUrl,
     protocol: report.protocol,
     model: report.model,
     score: report.score,
@@ -103,6 +108,7 @@ function sanitizeChecks(value: unknown): DetectionCheck[] {
       detail: asText(check.detail, 400),
       evidence: typeof check.evidence === "string" ? asText(check.evidence, 240) : undefined,
       critical: check.critical === true,
+      scored: check.scored !== false,
     };
   });
 }
@@ -113,6 +119,17 @@ function asHost(value: unknown) {
     throw new Error("主机名无效");
   }
   return host;
+}
+
+function asBaseUrl(value: unknown, host: string) {
+  const text = typeof value === "string" ? value.trim() : `https://${host}`;
+  let url: URL;
+  try { url = new URL(text); } catch { throw new Error("接口根地址无效"); }
+  if (url.protocol !== "https:" || url.hostname.toLowerCase() !== host || url.username || url.password || url.hash) {
+    throw new Error("接口根地址无效");
+  }
+  url.search = "";
+  return url.toString().replace(/\/$/, "");
 }
 
 function asText(value: unknown, max: number) {

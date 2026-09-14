@@ -5,6 +5,7 @@ import { ResultView } from "@/components/result-view";
 import { adsFor } from "@/lib/marketplace";
 import { readReport } from "@/lib/store";
 
+
 export const dynamic = "force-dynamic";
 
 export default async function ReportPage({ params }: { params: Promise<{ id: string }> }) {
@@ -19,7 +20,7 @@ export default async function ReportPage({ params }: { params: Promise<{ id: str
         <div className="mt-4">
           <ResultView result={report} />
         </div>
-        <Link href="/" className="mt-6 inline-block text-sm font-medium text-[#176b5b]">对这个接口再测一次 →</Link>
+        <Link href={`/?endpoint=${encodeURIComponent(report.baseUrl)}&protocol=${report.protocol}`} className="mt-6 inline-block text-sm font-medium text-[#176b5b]">对这个接口再测一次 →</Link>
       </article>
       <aside className="space-y-4">
         <AdBanner ad={adsFor("report-side")[0]} />
