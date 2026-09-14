@@ -23,6 +23,7 @@ export function OperatorDesk({
   const [summary, setSummary] = useState("");
   const [packageId, setPackageId] = useState("pro");
   const [message, setMessage] = useState("");
+  const [verification, setVerification] = useState<{ path: string; content: string } | null>(null);
   const [loading, setLoading] = useState(false);
 
   async function submit(event: FormEvent) {
@@ -35,10 +36,11 @@ export function OperatorDesk({
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ name, domain, summary, packageId }),
       });
-      const data = await response.json() as { error?: string; application?: ListingApplication };
+      const data = await response.json() as { error?: string; application?: ListingApplication; verification?: { path: string; content: string } };
       if (!response.ok || !data.application) throw new Error(data.error || "提交失败");
       setApplications((current) => [data.application!, ...current]);
       setMessage("已提交，状态为待审核。付款后我们会开通对应位置。");
+      setVerification(data.verification ?? null);
       setName("");
       setDomain("");
       setSummary("");
@@ -73,6 +75,12 @@ export function OperatorDesk({
         </select>
         <Button type="submit" className="mt-5 w-full" disabled={loading}>{loading ? "提交中…" : "提交审核"}</Button>
         {message && <p className="mt-3 text-sm text-slate-600">{message}</p>}
+        {verification && (
+          <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-950">
+            审核前请在站点部署 <code>{verification.path}</code>，文件内容为：
+            <code className="mt-2 block break-all rounded bg-white p-2 select-all">{verification.content}</code>
+          </div>
+        )}
       </form>
       <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
         <div className="flex items-center justify-between gap-3">

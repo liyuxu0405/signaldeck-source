@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { catalogStations } from "./catalog";
-import { getAffiliate, inventorySummary } from "./marketplace";
+import { getAffiliate, getCommercialDestination, inventorySummary } from "./marketplace";
 import { buildStationBoard } from "./rank";
 import { sanitizeReport } from "./report";
 
@@ -30,6 +30,15 @@ describe("变现库存与报告安全", () => {
     expect(summary.sponsorSlots).toBe(30);
     expect(summary.rankSlots).toBe(10);
     expect(getAffiliate("not-a-partner")).toBeUndefined();
+    expect(getCommercialDestination("listing-a", [{
+      id: "listing-a",
+      name: "示例站",
+      domain: "example.com",
+      summary: "示例",
+      href: "https://example.com",
+      featured: true,
+      paid: true,
+    }])).toBe("https://example.com/");
   });
 
   it("拒绝带密钥字段的公开报告", () => {

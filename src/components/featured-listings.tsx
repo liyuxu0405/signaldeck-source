@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
+import { CommercialLink } from "@/components/commercial-link";
 import type { Listing } from "@/lib/marketplace";
 
 export function FeaturedListings({ listings }: { listings: Listing[] }) {
@@ -15,15 +16,15 @@ export function FeaturedListings({ listings }: { listings: Listing[] }) {
       </div>
       {listings.length === 0 ? (
         <div className="mt-5 rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-8 text-center text-sm text-slate-600">
-          精选席位空缺。中转站可购买收录位，出现在检测流量旁边。
+          赞助商专区暂无内容。付费展示与检测排名严格分离。
         </div>
       ) : (
         <div className="mt-5 grid gap-3 md:grid-cols-2">
           {listings.map((item) => (
-            <a
+            <CommercialLink
               key={item.id}
-              href={item.href}
-              rel="sponsored nofollow"
+              campaignId={item.id}
+              placementId="featured"
               className="rounded-xl border border-slate-200 p-4 transition hover:border-emerald-300"
             >
               <div className="flex items-center justify-between gap-2">
@@ -32,7 +33,7 @@ export function FeaturedListings({ listings }: { listings: Listing[] }) {
               </div>
               <div className="mt-1 text-xs text-slate-500">{item.domain}</div>
               <p className="mt-2 text-sm leading-6 text-slate-600">{item.summary}</p>
-            </a>
+            </CommercialLink>
           ))}
         </div>
       )}

@@ -1,10 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import { newSessionId, normalizeEmail, sessionCookie, validEmail, verifyPassword } from "@/lib/auth";
-import { getUser, saveSession } from "@/lib/store";
+import { consumeRateLimit, getUser, saveSession } from "@/lib/store";
 
 export const runtime = "nodejs";
 
 export async function POST(request: NextRequest) {
+  const address = request.headers.get("cf-connecting-ip")
+    ?? request.headers.get("x-forwarded-for")?.split(",")[0]?.trim()
+    ?? "unknown";
+  if (!(await consumeRateLimit("login", address, 8, 15 * 60))) {
+    return NextResponse.json({ error: "登录尝试过于频繁，请稍后再试" }, { status: 429 });
+  }
   const body = await request.json().catch(() => ({})) as { email?: string; password?: string };
   const email = normalizeEmail(body.email ?? "");
   const password = body.password ?? "";

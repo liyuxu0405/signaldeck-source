@@ -26,7 +26,13 @@ export function StationBoard({ ranked, pending }: { ranked: RankedStation[]; pen
                 </div>
               </div>
               <div className="flex items-center gap-3">
-                <span className="font-semibold">{item.score} · {item.verdict}</span>
+                <span className="text-right">
+                  <span className="block font-semibold">{item.score} · {item.verdict}</span>
+                  <span className="block text-[11px] text-slate-400">
+                    近 30 天 {item.sampleCount ?? 1} 个日样本
+                    {item.lastCheckedAt ? ` · 最近 ${item.lastCheckedAt.slice(0, 10)}` : ""}
+                  </span>
+                </span>
                 {item.reportId && <Link href={`/r/${item.reportId}`} className="text-[#176b5b]">报告</Link>}
                 {item.endpoint && (
                   <Link href={`/?endpoint=${encodeURIComponent(item.endpoint)}&protocol=${item.protocol ?? "openai"}`} className="text-[#176b5b]">

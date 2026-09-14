@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { emailFromRequest } from "@/lib/auth";
+import { domainVerificationToken, emailFromRequest } from "@/lib/auth";
 import { listApplications, saveApplication, type ListingApplication } from "@/lib/store";
 
 export const runtime = "nodejs";
@@ -31,6 +31,11 @@ export async function POST(request: NextRequest) {
   const domain = hostFrom(body.domain ?? "");
   if (!name || !domain) return NextResponse.json({ error: "请填写名称与 HTTPS 域名" }, { status: 400 });
   if (!allowed.has(packageId)) return NextResponse.json({ error: "套餐无效" }, { status: 400 });
+  const verificationSecret = process.env.DOMAIN_VERIFICATION_SECRET ?? process.env.ADMIN_TOKEN;
+  if (!verificationSecret || verificationSecret.length < 32) {
+    return NextResponse.json({ error: "域名验证服务未配置" }, { status: 503 });
+  }
+  const verificationToken = await domainVerificationToken(email, domain, verificationSecret);
   const app: ListingApplication = {
     id: `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`,
     email,
@@ -42,7 +47,11 @@ export async function POST(request: NextRequest) {
     group: body.group || undefined,
     status: "pending",
     createdAt: new Date().toISOString(),
+    verificationToken,
   };
   await saveApplication(app);
-  return NextResponse.json({ application: app });
+  return NextResponse.json({
+    application: app,
+    verification: { path: "/.well-known/signaldeck-verification.txt", content: verificationToken },
+  });
 }

@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { newReportId, sanitizeReport } from "@/lib/report";
-import { saveReport } from "@/lib/store";
+import { publishReportDraft } from "@/lib/store";
 
 export const runtime = "nodejs";
 
@@ -18,7 +17,7 @@ export async function POST(request: NextRequest) {
   const ip = request.headers.get("x-real-ip") ?? request.headers.get("x-forwarded-for")?.split(",")[0] ?? "local";
   if (rateLimited(ip)) return NextResponse.json({ error: "请求过于频繁，请一分钟后再试" }, { status: 429 });
   const length = Number(request.headers.get("content-length") ?? 0);
-  if (length > 28_000) return NextResponse.json({ error: "报告过大" }, { status: 413 });
+  if (length > 512) return NextResponse.json({ error: "请求体过大" }, { status: 413 });
 
   let input: unknown;
   try {
@@ -27,11 +26,18 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "请求格式无效" }, { status: 400 });
   }
 
+  if (!input || typeof input !== "object" || Array.isArray(input)) {
+    return NextResponse.json({ error: "发布凭据无效" }, { status: 400 });
+  }
+  const body = input as Record<string, unknown>;
+  if (Object.keys(body).length !== 1 || typeof body.token !== "string" || !/^[a-f0-9]{64}$/.test(body.token)) {
+    return NextResponse.json({ error: "发布凭据无效" }, { status: 400 });
+  }
   try {
-    const report = sanitizeReport(input, newReportId(), new Date().toISOString());
-    await saveReport(report);
-    return NextResponse.json({ id: report.id });
-  } catch (error) {
-    return NextResponse.json({ error: error instanceof Error ? error.message : "保存失败" }, { status: 400 });
+    const report = await publishReportDraft(body.token);
+    if (!report) return NextResponse.json({ error: "发布凭据已失效" }, { status: 410 });
+    return NextResponse.json({ id: report.id }, { headers: { "cache-control": "no-store" } });
+  } catch {
+    return NextResponse.json({ error: "报告暂时无法发布，请稍后重试" }, { status: 503 });
   }
 }

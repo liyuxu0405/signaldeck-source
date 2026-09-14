@@ -164,6 +164,22 @@ export function getAffiliate(slug: string) {
   return partner;
 }
 
+export function getCommercialDestination(id: string, extraListings: Listing[] = []) {
+  const normalized = id.toLowerCase();
+  const href = affiliates.find((item) => item.slug.toLowerCase() === normalized)?.url
+    ?? ads.find((item) => item.id.toLowerCase() === normalized)?.href
+    ?? sponsors.find((item) => item.id.toLowerCase() === normalized)?.href
+    ?? paidRanks.find((item) => item.id.toLowerCase() === normalized)?.href
+    ?? [...listings, ...extraListings].find((item) => item.id.toLowerCase() === normalized)?.href;
+  if (!href) return undefined;
+  try {
+    const url = new URL(href);
+    return url.protocol === "https:" ? url.toString() : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 export function inventorySummary() {
   const vacantAds = ads.filter((ad) => ad.vacant).length;
   const vacantSponsors = sponsors.filter((item) => item.vacant).length;

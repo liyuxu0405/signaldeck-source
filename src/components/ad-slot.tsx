@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { CommercialLink } from "@/components/commercial-link";
 import type { AdSlot } from "@/lib/marketplace";
 
 export function AdBanner({ ad }: { ad?: AdSlot }) {
@@ -15,13 +16,13 @@ export function AdBanner({ ad }: { ad?: AdSlot }) {
     );
   }
   return (
-    <a
-      href={ad.href}
-      rel="sponsored nofollow"
+    <CommercialLink
+      campaignId={ad.id}
+      placementId={ad.placement}
       className="block rounded-2xl border border-slate-200 bg-white px-4 py-4 text-center shadow-sm transition hover:border-emerald-300"
     >
       <div className="text-xs font-medium uppercase tracking-wide text-slate-500">赞助 · {ad.id}</div>
       <div className="mt-1 text-sm font-semibold text-slate-900">{ad.headline ?? ad.partner}</div>
-    </a>
+    </CommercialLink>
   );
 }

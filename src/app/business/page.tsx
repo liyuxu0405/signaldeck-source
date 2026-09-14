@@ -15,8 +15,8 @@ export default function BusinessPage() {
   const inventory = inventorySummary();
   return (
     <main className="mx-auto max-w-7xl px-4 py-12 sm:px-6 sm:py-16">
-      <Badge variant="outline">变现与招商</Badge>
-      <h1 className="mt-4 max-w-3xl text-4xl font-bold tracking-tight">把检测流量卖给中转站</h1>
+      <Badge variant="outline">品牌合作</Badge>
+      <h1 className="mt-4 max-w-3xl text-4xl font-bold tracking-tight">在可信检测场景中获得透明曝光</h1>
       <p className="mt-4 max-w-2xl text-sm leading-7 text-slate-600">{monetizationPolicy}</p>
       <p className="mt-2 text-sm text-slate-500">
         商务邮箱 <a className="text-[#176b5b] underline" href={`mailto:${businessContact.email}`}>{businessContact.email}</a>
@@ -26,7 +26,7 @@ export default function BusinessPage() {
       <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <Stat label="横幅广告" value={`${inventory.soldAds}/${inventory.adSlots} 已售`} />
         <Stat label="模型组赞助" value={`${inventory.sponsorSlots - inventory.vacantSponsors}/${inventory.sponsorSlots} 已售`} />
-        <Stat label="付费 Top 10" value={`${inventory.rankSlots - inventory.vacantRanks}/${inventory.rankSlots} 已售`} />
+        <Stat label="品牌赞助专区" value={`${inventory.rankSlots - inventory.vacantRanks}/${inventory.rankSlots} 已售`} />
         <Stat label="空位可售" value={`${inventory.vacantAds + inventory.vacantSponsors + inventory.vacantRanks} 个`} />
       </div>
 
@@ -59,7 +59,7 @@ export default function BusinessPage() {
           {paidRanks.map((slot) => (
             <div key={slot.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3">
               <div>
-                <div className="font-medium">{slot.id} · 付费展示第 {slot.rank} 名</div>
+                <div className="font-medium">{slot.id} · 品牌赞助第 {slot.rank} 席</div>
                 <div className="text-xs text-slate-500">{slot.vacant ? "空位招租" : slot.partner}</div>
               </div>
               <Badge variant={slot.vacant ? "outline" : "secondary"}>{slot.vacant ? "可售" : "已售"}</Badge>

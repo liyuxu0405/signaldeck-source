@@ -28,9 +28,11 @@ const statusMeta = {
 export function ResultView({
   result,
   shareable = false,
+  publishToken,
 }: {
   result: ResultPayload;
   shareable?: boolean;
+  publishToken?: string;
 }) {
   const color = result.score >= 75 ? "#19745f" : result.score >= 50 ? "#b07920" : "#b33c3c";
   const [shareUrl, setShareUrl] = useState("");
@@ -44,7 +46,7 @@ export function ResultView({
       const response = await fetch("/api/reports", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify(result),
+        body: JSON.stringify({ token: publishToken }),
         signal: AbortSignal.timeout(12_000),
       });
       const data = await response.json() as { id?: string; error?: string };
@@ -81,7 +83,7 @@ export function ResultView({
             <Clock3 className="mr-1 inline size-3.5" />
             {(result.durationMs / 1000).toFixed(1)} 秒 · {result.requestCount} 个请求
           </div>
-          {shareable && (
+          {shareable && publishToken && (
             <Button type="button" variant="outline" size="sm" disabled={sharing} onClick={publish}>
               <Link2 />{sharing ? "正在生成链接…" : shareUrl ? "再次复制链接" : "公开这份报告"}
             </Button>
