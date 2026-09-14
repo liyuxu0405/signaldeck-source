@@ -1,4 +1,4 @@
-import { toIndexItem, type PublicReport, type ReportIndexItem } from "./report";
+import { newPublishToken, toIndexItem, type PublicReport, type ReportIndexItem } from "./report";
 import type { Listing } from "./marketplace";
 
 export type UserRecord = { email: string; password: string; createdAt: string };
@@ -24,15 +24,40 @@ export type ListingApplication = {
   group?: string;
   status: "pending" | "approved" | "rejected";
   createdAt: string;
+  verificationToken?: string;
+  domainVerifiedAt?: string;
 };
 
-type KvLike = {
+export type KvLike = {
   get(key: string): Promise<string | null>;
   put(key: string, value: string, options?: { expirationTtl?: number }): Promise<void>;
   delete(key: string): Promise<void>;
+  list?(options: { prefix?: string; cursor?: string }): Promise<{
+    keys: Array<{ name: string }>;
+    list_complete: boolean;
+    cursor?: string;
+  }>;
 };
 
-const REPORT_TTL = 60 * 60 * 24 * 90;
+export type CommercialEvent = {
+  kind: "impression" | "click";
+  campaignId: string;
+  placementId: string;
+  eventId: string;
+  occurredAt: string;
+  path?: string;
+};
+
+export type CommercialMetricRow = {
+  date: string;
+  campaignId: string;
+  placementId: string;
+  impressions: number;
+  clicks: number;
+  ctr: number | null;
+};
+
+const REPORT_DRAFT_TTL = 60 * 15;
 const INDEX_KEY = "report-index";
 const CLICK_PREFIX = "aff-click:";
 const memory = new Map<string, string>();
@@ -46,6 +71,12 @@ const memoryStore: KvLike = {
   },
   async delete(key) {
     memory.delete(key);
+  },
+  async list(options) {
+    return {
+      keys: [...memory.keys()].filter((key) => key.startsWith(options.prefix ?? "")).map((name) => ({ name })),
+      list_complete: true,
+    };
   },
 };
 
@@ -61,6 +92,7 @@ export async function getStore(): Promise<KvLike> {
         delete: async (key) => {
           if (typeof kv.delete === "function") await kv.delete(key);
         },
+        list: kv.list ? (options) => kv.list!(options) : undefined,
       };
     }
   } catch {
@@ -72,17 +104,16 @@ export async function getStore(): Promise<KvLike> {
   return memoryStore;
 }
 
-export async function saveReport(report: PublicReport) {
-  const store = await getStore();
-  await store.put(`report:${report.id}`, JSON.stringify(report), { expirationTtl: REPORT_TTL });
+export async function saveReport(report: PublicReport, target?: KvLike) {
+  const store = target ?? await getStore();
+  await store.put(`report:${report.id}`, JSON.stringify(report));
   const current = await readIndex(store);
-  const next = [toIndexItem(report), ...current.filter((item) => item.id !== report.id)].slice(0, 40);
-  await store.put(INDEX_KEY, JSON.stringify(next), { expirationTtl: REPORT_TTL });
+  await store.put(INDEX_KEY, JSON.stringify(mergeReportIndex(toIndexItem(report), current)));
 }
 
-export async function readReport(id: string) {
+export async function readReport(id: string, target?: KvLike) {
   if (!/^[a-z0-9]{8,20}$/.test(id)) return null;
-  const store = await getStore();
+  const store = target ?? await getStore();
   const raw = await store.get(`report:${id}`);
   if (!raw) return null;
   try {
@@ -90,6 +121,52 @@ export async function readReport(id: string) {
   } catch {
     return null;
   }
+}
+
+export function mergeReportIndex(report: ReportIndexItem, current: ReportIndexItem[]) {
+  const perHost = new Map<string, number>();
+  return [report, ...current.filter((item) => item.id !== report.id)]
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+    .filter((item) => {
+      const count = perHost.get(item.host) ?? 0;
+      if (count >= 30) return false;
+      perHost.set(item.host, count + 1);
+      return true;
+    })
+    .slice(0, 1_000);
+}
+
+async function reportDraftKey(token: string) {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(token));
+  const hash = Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+  return `report-draft:${hash}`;
+}
+
+export async function saveReportDraft(report: PublicReport, target?: KvLike) {
+  const token = newPublishToken();
+  const store = target ?? await getStore();
+  await store.put(await reportDraftKey(token), JSON.stringify(report), { expirationTtl: REPORT_DRAFT_TTL });
+  return token;
+}
+
+export async function readReportDraft(token: string, target?: KvLike) {
+  if (!/^[a-f0-9]{64}$/.test(token)) return null;
+  const store = target ?? await getStore();
+  const raw = await store.get(await reportDraftKey(token));
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw) as PublicReport;
+  } catch {
+    return null;
+  }
+}
+
+export async function publishReportDraft(token: string, target?: KvLike) {
+  const store = target ?? await getStore();
+  const report = await readReportDraft(token, store);
+  if (!report) return null;
+  await saveReport(report, store);
+  return report;
 }
 
 export async function listRecentReports() {
@@ -144,12 +221,91 @@ export async function recordAffiliateClick(slug: string) {
   await store.put(key, String(Number.isFinite(current) ? current + 1 : 1));
 }
 
+const commercialIdPattern = /^[a-z0-9][a-z0-9._-]{1,79}$/;
+
+export async function recordCommercialEvent(event: CommercialEvent, target?: KvLike) {
+  if (!commercialIdPattern.test(event.campaignId)
+    || !commercialIdPattern.test(event.placementId)
+    || !commercialIdPattern.test(event.eventId)) {
+    throw new Error("商业归因参数无效");
+  }
+  const timestamp = Date.parse(event.occurredAt);
+  if (!Number.isFinite(timestamp)) throw new Error("商业归因时间无效");
+  const normalized = { ...event, occurredAt: new Date(timestamp).toISOString(), path: event.path?.slice(0, 160) };
+  const date = normalized.occurredAt.slice(0, 10);
+  const store = target ?? await getStore();
+  const key = `metric:v1:${date}:${event.kind}:${event.campaignId}:${event.placementId}:${event.eventId}`;
+  await store.put(key, JSON.stringify(normalized), { expirationTtl: 60 * 60 * 24 * 180 });
+}
+
+export async function listCommercialMetrics(
+  range: { from: string; to: string },
+  target?: KvLike,
+): Promise<CommercialMetricRow[]> {
+  const store = target ?? await getStore();
+  if (!store.list) return [];
+  const rows = new Map<string, CommercialMetricRow>();
+  let cursor: string | undefined;
+  do {
+    const page = await store.list({ prefix: "metric:v1:", cursor });
+    const events = await Promise.all(page.keys.map(async ({ name }) => {
+      const raw = await store.get(name);
+      if (!raw) return null;
+      try { return JSON.parse(raw) as CommercialEvent; } catch { return null; }
+    }));
+    for (const event of events) {
+      if (!event) continue;
+      const date = event.occurredAt.slice(0, 10);
+      if (date < range.from || date > range.to) continue;
+      const key = `${date}:${event.campaignId}:${event.placementId}`;
+      const row = rows.get(key) ?? {
+        date,
+        campaignId: event.campaignId,
+        placementId: event.placementId,
+        impressions: 0,
+        clicks: 0,
+        ctr: null,
+      };
+      if (event.kind === "impression") row.impressions += 1;
+      else row.clicks += 1;
+      rows.set(key, row);
+    }
+    cursor = page.list_complete ? undefined : page.cursor;
+  } while (cursor);
+  return [...rows.values()].map((row) => ({
+    ...row,
+    ctr: row.impressions ? Number((row.clicks / row.impressions).toFixed(4)) : null,
+  })).sort((a, b) => b.date.localeCompare(a.date) || a.campaignId.localeCompare(b.campaignId));
+}
+
+export async function consumeRateLimit(
+  scope: string,
+  identity: string,
+  limit: number,
+  windowSeconds: number,
+  target?: KvLike,
+  now = Date.now(),
+) {
+  if (!/^[a-z0-9-]{1,40}$/.test(scope) || !identity || limit < 1 || windowSeconds < 1) return false;
+  const store = target ?? await getStore();
+  const window = Math.floor(now / (windowSeconds * 1_000));
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(identity));
+  const hash = Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+  const key = `rate:v1:${scope}:${window}:${hash}`;
+  const current = Number(await store.get(key) ?? "0");
+  if (Number.isFinite(current) && current >= limit) return false;
+  await store.put(key, String(Number.isFinite(current) ? current + 1 : 1), {
+    expirationTtl: Math.max(60, windowSeconds * 2),
+  });
+  return true;
+}
+
 async function readIndex(store: KvLike): Promise<ReportIndexItem[]> {
   const raw = await store.get(INDEX_KEY);
   if (!raw) return [];
   try {
     const parsed = JSON.parse(raw) as ReportIndexItem[];
-    return Array.isArray(parsed) ? parsed.slice(0, 40) : [];
+    return Array.isArray(parsed) ? parsed.slice(0, 1_000) : [];
   } catch {
     return [];
   }

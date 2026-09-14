@@ -12,6 +12,27 @@ export function validEmail(email: string) {
   return /^[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}$/i.test(email) && email.length <= 120;
 }
 
+export function validDomainVerificationToken(token: string) {
+  return /^[a-f0-9]{64}$/.test(token);
+}
+
+export async function domainVerificationToken(email: string, domain: string, secret: string) {
+  if (secret.length < 32) throw new Error("DOMAIN_VERIFICATION_SECRET 至少需要 32 个字符");
+  const key = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(secret),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"],
+  );
+  const signature = await crypto.subtle.sign(
+    "HMAC",
+    key,
+    new TextEncoder().encode(`${normalizeEmail(email)}\n${domain.toLowerCase()}`),
+  );
+  return Array.from(new Uint8Array(signature), (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
 async function pbkdf2(password: string, salt: Uint8Array) {
   const material = new Uint8Array(salt);
   const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(password), "PBKDF2", false, ["deriveBits"]);

@@ -1,4 +1,4 @@
-import type { CheckStatus, DetectionCheck, Protocol } from "@/lib/detection";
+import { summarize, type CheckStatus, type DetectionCheck, type Protocol } from "./detection";
 
 const statuses = new Set<CheckStatus>(["pass", "warn", "fail"]);
 const secretPattern = /\b(?:sk|key|token|api[_-]?key)-[A-Za-z0-9_.*-]{4,}/i;
@@ -33,6 +33,15 @@ export function newReportId() {
   return Array.from(bytes, (byte) => byte.toString(36).padStart(2, "0")).join("").slice(0, 14);
 }
 
+export function newPublishToken() {
+  const bytes = crypto.getRandomValues(new Uint8Array(32));
+  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+export function issueReport(input: unknown, createdAt = new Date().toISOString()) {
+  return sanitizeReport(input, newReportId(), createdAt);
+}
+
 export function sanitizeReport(input: unknown, id: string, createdAt: string): PublicReport {
   if (!input || typeof input !== "object") throw new Error("报告格式无效");
   const raw = input as Record<string, unknown>;
@@ -49,13 +58,12 @@ export function sanitizeReport(input: unknown, id: string, createdAt: string): P
 
   const host = asHost(raw.host);
   const model = asText(raw.model, 120);
-  const verdict = asText(raw.verdict, 40);
   const disclaimer = asText(raw.disclaimer, 400);
-  const score = asScore(raw.score);
   const durationMs = asInt(raw.durationMs, 1, 300_000);
   const requestCount = asInt(raw.requestCount, 1, 24);
   const mode = raw.mode === "deep" ? "deep" : "standard";
   const checks = sanitizeChecks(raw.checks);
+  const { score, verdict } = summarize(checks);
   const payload: PublicReport = {
     id, createdAt, score, verdict, protocol, model, host, durationMs, requestCount, mode, disclaimer, checks,
   };
@@ -112,13 +120,6 @@ function asText(value: unknown, max: number) {
   const text = value.trim();
   if (!text || text.length > max) throw new Error("字段长度无效");
   return text;
-}
-
-function asScore(value: unknown) {
-  if (typeof value !== "number" || !Number.isInteger(value) || value < 0 || value > 100) {
-    throw new Error("分数无效");
-  }
-  return value;
 }
 
 function asInt(value: unknown, min: number, max: number) {

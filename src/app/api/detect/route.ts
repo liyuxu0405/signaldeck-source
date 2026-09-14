@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { countTokensEndpointFor, endpointFor, secureEndpoint } from "@/lib/safe-endpoint";
+import { issueReport } from "@/lib/report";
+import { saveReportDraft } from "@/lib/store";
 import {
   classifyUpstreamError, estimateTokens, extractAssistantText, instructionFollowCheck, longContextCheck,
   outputBoundCheck, protocolShapeCheck, stopReasonCheck, streamShapeCheck, structuredOutputCheck, summarize,
@@ -323,7 +325,7 @@ export async function POST(request: NextRequest) {
     }
 
     const summary = summarize(checks);
-    return NextResponse.json({
+    const result = issueReport({
       ...summary, protocol, model, mode, host: endpoint.hostname, durationMs: Date.now() - started,
       checks,
       requestCount: 3
@@ -333,6 +335,11 @@ export async function POST(request: NextRequest) {
         + (mode === "deep" ? protocol === "anthropic" ? 1 : 2 : 0),
       disclaimer: "本检测能发现协议转译、Token 增量异常与流式计数差异；不能替代供应商账单，也不能仅凭文本数学证明具体模型身份。",
     });
+    const publishToken = await saveReportDraft(result);
+    return NextResponse.json(
+      { result, publishToken, publishExpiresInSeconds: 900 },
+      { headers: { "cache-control": "no-store" } },
+    );
   } catch (error) {
     const message = error instanceof Error ? error.message : "检测失败";
     return NextResponse.json({ error: message.includes(apiKey) ? "检测失败，已隐藏敏感信息" : message }, { status: 422 });

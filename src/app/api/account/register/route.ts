@@ -1,22 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import { hashPassword, newSessionId, normalizeEmail, sessionCookie, validEmail } from "@/lib/auth";
-import { getUser, saveSession, saveUser } from "@/lib/store";
+import { consumeRateLimit, getUser, saveSession, saveUser } from "@/lib/store";
 
 export const runtime = "nodejs";
 
-const hits = new Map<string, number[]>();
-
-function rateLimited(ip: string) {
-  const now = Date.now();
-  const recent = (hits.get(ip) ?? []).filter((time) => now - time < 60_000);
-  recent.push(now);
-  hits.set(ip, recent);
-  return recent.length > 8;
-}
-
 export async function POST(request: NextRequest) {
-  const ip = request.headers.get("x-real-ip") ?? request.headers.get("x-forwarded-for")?.split(",")[0] ?? "local";
-  if (rateLimited(ip)) return NextResponse.json({ error: "请求过于频繁" }, { status: 429 });
+  const ip = request.headers.get("cf-connecting-ip")
+    ?? request.headers.get("x-forwarded-for")?.split(",")[0]?.trim()
+    ?? "unknown";
+  if (!(await consumeRateLimit("register", ip, 5, 15 * 60))) {
+    return NextResponse.json({ error: "请求过于频繁" }, { status: 429 });
+  }
   const body = await request.json().catch(() => ({})) as { email?: string; password?: string };
   const email = normalizeEmail(body.email ?? "");
   const password = body.password ?? "";

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { CommercialLink } from "@/components/commercial-link";
 import { Badge } from "@/components/ui/badge";
 import { modelGroups, paidRanks, sponsorsFor, type Listing, type RankSlot, type SponsorSlot } from "@/lib/marketplace";
 
@@ -31,18 +32,18 @@ function SponsorCell({ slot }: { slot: SponsorSlot }) {
     );
   }
   return (
-    <a href={slot.href} rel="sponsored nofollow" className="rounded-md border border-slate-200 px-1 py-2 text-center text-[10px] font-medium">
+    <CommercialLink campaignId={slot.id} placementId={slot.id} className="rounded-md border border-slate-200 px-1 py-2 text-center text-[10px] font-medium">
       {slot.partner ?? slot.id}
-    </a>
+    </CommercialLink>
   );
 }
 
 export function PaidTopTen() {
   return (
     <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
-      <Badge variant="outline">付费 Top 10</Badge>
-      <h2 className="mt-3 text-lg font-bold">展示排名，不是检测排名</h2>
-      <p className="mt-1 text-sm text-slate-500">T1–T10 是付费位置。真实分数只出现在下方「公开样本榜」。</p>
+      <Badge variant="outline">品牌赞助专区</Badge>
+      <h2 className="mt-3 text-lg font-bold">商业展示，不参与检测排名</h2>
+      <p className="mt-1 text-sm text-slate-500">T1–T10 是明确标注的赞助位置。真实分数只出现在「公开样本榜」。</p>
       <ol className="mt-5 divide-y divide-slate-100 rounded-xl border border-slate-200">
         {paidRanks.map((slot) => <RankRow key={slot.id} slot={slot} />)}
       </ol>
@@ -57,7 +58,7 @@ function RankRow({ slot }: { slot: RankSlot }) {
       {slot.vacant || !slot.href ? (
         <Link href="/business#inventory" className="text-[#176b5b]">第 {slot.rank} 名空位招租</Link>
       ) : (
-        <a href={slot.href} rel="sponsored nofollow" className="font-medium">{slot.partner}</a>
+        <CommercialLink campaignId={slot.id} placementId={slot.id} className="font-medium">{slot.partner}</CommercialLink>
       )}
     </li>
   );
@@ -76,14 +77,14 @@ export function ProBoard({ listings }: { listings: Listing[] }) {
       ) : (
         <div className="mt-5 grid gap-3 md:grid-cols-2">
           {listings.map((item) => (
-            <a key={item.id} href={item.href} rel="sponsored nofollow" className="rounded-xl border border-slate-200 p-4">
+            <CommercialLink key={item.id} campaignId={item.id} placementId="pro" className="rounded-xl border border-slate-200 p-4">
               <div className="flex items-center justify-between gap-2">
                 <div className="font-semibold">{item.name}</div>
                 <Badge>PRO</Badge>
               </div>
               <div className="mt-1 text-xs text-slate-500">{item.domain}</div>
               <p className="mt-2 text-sm text-slate-600">{item.summary}</p>
-            </a>
+            </CommercialLink>
           ))}
         </div>
       )}

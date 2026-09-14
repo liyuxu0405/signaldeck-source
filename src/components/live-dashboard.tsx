@@ -43,6 +43,7 @@ export function LiveDashboard({
   const [probe, setProbe] = useState<{ status: "success" | "warn" | "error"; message: string } | null>(null);
   const [error, setError] = useState("");
   const [result, setResult] = useState<ResultPayload | null>(null);
+  const [publishToken, setPublishToken] = useState("");
 
   async function probeEndpoint() {
     setProbeLoading(true);
@@ -82,6 +83,7 @@ export function LiveDashboard({
     setLoading(true);
     setError("");
     setResult(null);
+    setPublishToken("");
     try {
       const response = await fetch("/api/detect", {
         method: "POST",
@@ -89,9 +91,11 @@ export function LiveDashboard({
         body: JSON.stringify({ protocol, baseUrl, apiKey, model, thinking, mode, longContext }),
         signal: AbortSignal.timeout(mode === "deep" || longContext ? 120_000 : thinking ? 90_000 : protocol === "anthropic" ? 45_000 : 30_000),
       });
-      const data = await readJson<ResultPayload & { error?: string }>(response);
+      const data = await readJson<{ result?: ResultPayload; publishToken?: string; error?: string }>(response);
       if (!response.ok) throw new Error(data.error || "检测请求失败");
-      setResult(data);
+      if (!data.result || !data.publishToken) throw new Error("检测结果缺少服务端发布凭据");
+      setResult(data.result);
+      setPublishToken(data.publishToken);
       setApiKey("");
     } catch (reason) {
       setError(reason instanceof DOMException && reason.name === "TimeoutError"
@@ -128,8 +132,8 @@ export function LiveDashboard({
             <div className="flex items-center gap-3">
               <span className="grid size-10 place-items-center rounded-xl bg-emerald-50 text-[#176b5b]"><SearchCheck /></span>
               <div>
-                <div className="font-semibold">免费检测，流量可变现</div>
-                <div className="text-xs text-slate-500">报告公开后进入收录页，广告卖的是这份注意力</div>
+                <div className="font-semibold">公开证据，辅助选择可靠服务</div>
+                <div className="text-xs text-slate-500">检测报告可公开复核，商业合作不会改变分数与结论</div>
               </div>
             </div>
             <div className="mt-5 space-y-3 text-sm">
@@ -232,7 +236,7 @@ export function LiveDashboard({
                 </div>
               </div>
             ) : result ? (
-              <ResultView result={result} shareable />
+              <ResultView result={result} publishToken={publishToken} shareable />
             ) : (
               <div className="grid h-full min-h-[470px] place-items-center text-center">
                 <div className="max-w-md">
