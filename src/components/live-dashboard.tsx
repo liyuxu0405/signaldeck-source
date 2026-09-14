@@ -23,11 +23,17 @@ async function readJson<T>(response: Response): Promise<T> {
   }
 }
 
-export function LiveDashboard() {
-  const [protocol, setProtocol] = useState<Protocol>("openai");
+export function LiveDashboard({
+  initialBaseUrl = "",
+  initialProtocol,
+}: {
+  initialBaseUrl?: string;
+  initialProtocol?: Protocol;
+}) {
+  const [protocol, setProtocol] = useState<Protocol>(initialProtocol ?? "openai");
   const [mode, setMode] = useState<"standard" | "deep">("standard");
   const [longContext, setLongContext] = useState(false);
-  const [baseUrl, setBaseUrl] = useState("");
+  const [baseUrl, setBaseUrl] = useState(initialBaseUrl);
   const [apiKey, setApiKey] = useState("");
   const [model, setModel] = useState("");
   const [availableModels, setAvailableModels] = useState<string[]>([]);

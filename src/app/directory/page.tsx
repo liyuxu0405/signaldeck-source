@@ -2,8 +2,10 @@ import Link from "next/link";
 import { AdBanner } from "@/components/ad-slot";
 import { FeaturedListings } from "@/components/featured-listings";
 import { PaidTopTen, ProBoard, SponsorBoard } from "@/components/paid-inventory";
+import { StationBoard } from "@/components/station-board";
 import { Badge } from "@/components/ui/badge";
 import { adsFor, featuredListings, monetizationPolicy, proListings } from "@/lib/marketplace";
+import { buildStationBoard } from "@/lib/rank";
 import { approvedOperatorListings, listRecentReports } from "@/lib/store";
 
 export const dynamic = "force-dynamic";
@@ -15,6 +17,7 @@ export const metadata = {
 
 export default async function DirectoryPage() {
   const [reports, operatorListings] = await Promise.all([listRecentReports(), approvedOperatorListings()]);
+  const board = buildStationBoard(reports);
   const ranked = [...reports].sort((a, b) => b.score - a.score || b.createdAt.localeCompare(a.createdAt));
   const featured = featuredListings(operatorListings);
   const pro = proListings(operatorListings);
@@ -27,6 +30,7 @@ export default async function DirectoryPage() {
       <p className="mt-4 max-w-2xl text-sm leading-7 text-slate-600">{monetizationPolicy}</p>
 
       <div className="mt-8 grid gap-4">
+        <StationBoard ranked={board.ranked} pending={board.pending} />
         <SponsorBoard />
         <PaidTopTen />
         <ProBoard listings={pro} />
@@ -53,7 +57,7 @@ export default async function DirectoryPage() {
                   <span className="w-6 font-mono text-xs text-slate-400">{index + 1}</span>
                   <div>
                     <div className="font-medium">{item.host}</div>
-                    <div className="mt-1 text-xs text-slate-500">{item.protocol} · {item.model} · {new Date(item.createdAt).toLocaleString("zh-CN")}</div>
+                    <div className="mt-1 text-xs text-slate-500">{item.protocol} · {item.model} · {item.createdAt.slice(0, 16).replace("T", " ")} UTC</div>
                   </div>
                 </div>
                 <div className="text-sm font-semibold">{item.score} · {item.verdict}</div>
