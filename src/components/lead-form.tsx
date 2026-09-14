@@ -28,7 +28,7 @@ export function LeadForm() {
       const data = await response.json() as { error?: string };
       if (!response.ok) throw new Error(data.error || "提交失败");
       setStatus("ok");
-      setMessage("已收到。我们会按联系方式回复档期与合同条款。");
+      setMessage("已写入商务后台。站长不会自动收到邮件，请打开 /admin 查看。");
       setNote("");
     } catch (reason) {
       setStatus("error");
@@ -41,7 +41,7 @@ export function LeadForm() {
   return (
     <form onSubmit={submit} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
       <h2 className="text-lg font-bold">留下档期需求</h2>
-      <p className="mt-2 text-sm text-slate-500">不自动上线广告。人工确认付款与素材后再改库存。</p>
+      <p className="mt-2 text-sm text-slate-500">提交后进入商务后台，不会自动发邮件。</p>
       <label htmlFor="lead-name" className="mt-5 block text-sm font-medium">联系人</label>
       <Input id="lead-name" className="mt-2" required value={name} onChange={(e) => setName(e.target.value)} />
       <label htmlFor="lead-contact" className="mt-4 block text-sm font-medium">邮箱 / 微信 / Telegram</label>

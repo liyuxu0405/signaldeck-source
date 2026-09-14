@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
+import { catalogStations } from "./catalog";
 import { getAffiliate, inventorySummary } from "./marketplace";
+import { buildStationBoard } from "./rank";
 import { sanitizeReport } from "./report";
 
 const sample = {
@@ -25,6 +27,8 @@ describe("变现库存与报告安全", () => {
     const summary = inventorySummary();
     expect(summary.adSlots).toBeGreaterThan(0);
     expect(summary.vacantAds).toBe(summary.adSlots);
+    expect(summary.sponsorSlots).toBe(30);
+    expect(summary.rankSlots).toBe(10);
     expect(getAffiliate("not-a-partner")).toBeUndefined();
   });
 
@@ -36,5 +40,24 @@ describe("变现库存与报告安全", () => {
     const report = sanitizeReport(sample, "abc12345zz", "2026-09-14T00:00:00.000Z");
     expect(report.host).toBe("api.example.com");
     expect(report.id).toBe("abc12345zz");
+  });
+
+  it("未检测的目录站点进入待测区，公开报告才进入排名", () => {
+    expect(catalogStations.length).toBeGreaterThan(10);
+    const empty = buildStationBoard([]);
+    expect(empty.ranked).toEqual([]);
+    expect(empty.pending.length).toBe(catalogStations.length);
+    const scored = buildStationBoard([{
+      id: "abc12345zz",
+      createdAt: "2026-09-14T00:00:00.000Z",
+      host: "api.deepseek.com",
+      protocol: "openai",
+      model: "deepseek-chat",
+      score: 88,
+      verdict: "未见明显异常",
+    }]);
+    expect(scored.ranked[0]?.domain).toBe("api.deepseek.com");
+    expect(scored.ranked[0]?.score).toBe(88);
+    expect(scored.pending.length).toBe(catalogStations.length - 1);
   });
 });

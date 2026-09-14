@@ -3,13 +3,15 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Menu, Radar } from "lucide-react";
+import { AccountNav } from "@/components/account-nav";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { cn } from "cn";
 
 const links = [
   { href: "/", label: "现场检测" },
-  { href: "/directory", label: "公开收录" },
+  { href: "/directory", label: "公开榜" },
+  { href: "/faq", label: "FAQ" },
   { href: "/business", label: "商务合作" },
 ];
 
@@ -35,7 +37,10 @@ export function SiteHeader() {
             </Link>
           ))}
         </nav>
-        <Link href="/business" className={cn(buttonVariants(), "hidden md:inline-flex")}>投放广告</Link>
+        <div className="hidden items-center gap-3 md:flex">
+          <AccountNav />
+          <Link href="/business" className={cn(buttonVariants())}>投放广告</Link>
+        </div>
         <Sheet>
           <SheetTrigger render={<Button variant="ghost" size="icon" className="md:hidden" aria-label="打开菜单" />}>
             <Menu />
@@ -52,6 +57,7 @@ export function SiteHeader() {
                   {link.label}
                 </Link>
               ))}
+              <Link href="/account" className={cn(buttonVariants({ variant: "ghost" }), "justify-start")}>站长后台</Link>
             </div>
           </SheetContent>
         </Sheet>
@@ -66,7 +72,7 @@ export function SiteFooter() {
       <div className="mx-auto flex max-w-7xl flex-col gap-3 px-4 py-8 text-sm text-slate-500 sm:flex-row sm:justify-between sm:px-6">
         <span className="font-semibold text-slate-800">SignalDeck</span>
         <span>付费只买展示位置，不买检测分数。</span>
-        <span>© 2026</span>
+        <a className="text-[#176b5b]" href="https://github.com/liyuxu0405/signaldeck-source/issues">GitHub 交流</a>
       </div>
     </footer>
   );

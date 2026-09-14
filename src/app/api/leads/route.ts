@@ -39,7 +39,24 @@ export async function POST(request: NextRequest) {
   if (!name || !contact) return NextResponse.json({ error: "请填写联系人与联系方式" }, { status: 400 });
   if (packageId && !packageIds.has(packageId)) return NextResponse.json({ error: "套餐无效" }, { status: 400 });
 
-  await saveLead({ name, contact, company, note, packageId });
+  const lead = await saveLead({ name, contact, company, note, packageId });
+  const webhook = process.env.BUSINESS_WEBHOOK;
+  if (webhook) {
+    try {
+      await fetch(webhook, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          content: `新商务意向：${lead.name} / ${lead.contact} / ${lead.company || "未填站点"} / ${lead.packageId}`,
+          text: `新商务意向：${lead.name} / ${lead.contact} / ${lead.company || "未填站点"} / ${lead.packageId}`,
+          lead,
+        }),
+        signal: AbortSignal.timeout(8_000),
+      });
+    } catch {
+      /* 通知失败不影响已保存的线索 */
+    }
+  }
   return NextResponse.json({ ok: true });
 }
 

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
-  classifyUpstreamError, estimateTokens, protocolShapeCheck, structuredOutputCheck, summarize,
-  tokenChecks, toolCallingCheck, usageFields,
+  classifyUpstreamError, estimateTokens, instructionFollowCheck, longContextCheck, protocolShapeCheck,
+  structuredOutputCheck, summarize, thinkingSignatureCheck, tokenChecks, toolCallingCheck, usageFields,
 } from "./detection";
 import {
   countTokensEndpointFor, endpointFor, isPublicAddress, modelsEndpointFor, secureEndpoint,
@@ -85,6 +85,13 @@ describe("Token 风险分析", () => {
       { id: "pass", label: "pass", status: "pass", weight: 10, detail: "" },
       { id: "fail", label: "fail", status: "fail", weight: 10, detail: "" },
     ]).score).toBe(50);
+  });
+
+  it("长上下文与 thinking 探针使用独立判定", () => {
+    expect(longContextCheck(false).status).toBe("warn");
+    expect(longContextCheck(true, 80, 200).status).toBe("pass");
+    expect(thinkingSignatureCheck(true, "s".repeat(120)).weight).toBe(22);
+    expect(instructionFollowCheck("prefix SIGNALDECK_OK").status).toBe("pass");
   });
 
   it("分词基线随文本增长", () => {

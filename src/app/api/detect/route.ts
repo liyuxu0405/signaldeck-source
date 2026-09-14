@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { countTokensEndpointFor, endpointFor, secureEndpoint } from "@/lib/safe-endpoint";
 import {
-  classifyUpstreamError, estimateTokens, protocolShapeCheck, structuredOutputCheck, summarize,
-  tokenChecks, toolCallingCheck, usageFields, type DetectionCheck, type Protocol,
+  classifyUpstreamError, estimateTokens, extractAssistantText, instructionFollowCheck, longContextCheck,
+  outputBoundCheck, protocolShapeCheck, stopReasonCheck, streamShapeCheck, structuredOutputCheck, summarize,
+  thinkingSignatureCheck, tokenChecks, toolCallingCheck, usageFields, type DetectionCheck, type Protocol,
 } from "@/lib/detection";
 
 export const runtime = "nodejs";
@@ -11,6 +12,7 @@ const hits = new Map<string, number[]>();
 let activeJobs = 0;
 const shortPrompt = "Reply with exactly SIGNALDECK_OK and nothing else.";
 const longPrompt = `${Array.from({ length: 90 }, (_, i) => `audit-marker-${i}`).join(" ")}\nReply with exactly SIGNALDECK_OK and nothing else.`;
+const contextPrompt = `${Array.from({ length: 220 }, (_, i) => `signaldeck-window-${String(i).padStart(3, "0")}-${(i * 17) % 997}`).join(" ")}\nReply with exactly SIGNALDECK_OK and nothing else.`;
 
 type Payload = {
   baseUrl?: string;
@@ -19,6 +21,7 @@ type Payload = {
   protocol?: Protocol;
   thinking?: boolean;
   mode?: "standard" | "deep";
+  longContext?: boolean;
 };
 
 function rateLimited(ip: string) {
@@ -88,7 +91,7 @@ export async function POST(request: NextRequest) {
   try { input = await request.json() as Payload; } catch {
     return NextResponse.json({ error: "请求格式无效" }, { status: 400 });
   }
-  const { baseUrl, apiKey, model, protocol, thinking = false, mode = "standard" } = input;
+  const { baseUrl, apiKey, model, protocol, thinking = false, mode = "standard", longContext = false } = input;
   if (!baseUrl || !apiKey || !model || !protocol) return NextResponse.json({ error: "请完整填写检测参数" }, { status: 400 });
   if (!["openai", "anthropic", "gemini"].includes(protocol)) return NextResponse.json({ error: "不支持的协议" }, { status: 400 });
   if (!["standard", "deep"].includes(mode)) return NextResponse.json({ error: "不支持的检测模式" }, { status: 400 });
@@ -201,22 +204,37 @@ export async function POST(request: NextRequest) {
         localLong: referenceLong,
         referenceSource,
       }),
+      instructionFollowCheck(extractAssistantText(protocol, shortData)),
+      stopReasonCheck(protocol, shortData),
+      outputBoundCheck(protocol, shortData, 24),
+      streamShapeCheck(protocol, streamed.text),
     ];
+
+    if (longContext) {
+      try {
+        const context = await call(contextPrompt);
+        checks.push(longContextCheck(true, usageFrom(protocol, longData), usageFrom(protocol, context.data!)));
+      } catch (error) {
+        checks.push({
+          id: "long-context",
+          label: "长上下文抽样",
+          status: "warn",
+          weight: 10,
+          detail: "水窗抽样未完成。该项不是官方百万级上下文证明。",
+          evidence: error instanceof Error ? error.message : "未知错误",
+        });
+      }
+    } else {
+      checks.push(longContextCheck(false));
+    }
 
     if (protocol === "anthropic") {
       if (thinking) {
         const probe = await call("Think step by step, then answer: what is 137 + 248?", false, true);
         const content = Array.isArray(probe.data?.content) ? probe.data.content as Array<Record<string, unknown>> : [];
-        const signature = content.find((block) => block.type === "thinking")?.signature;
-        const validShape = typeof signature === "string" && signature.length >= 100;
-        checks.push({
-          id: "thinking-signature", label: "Thinking signature 存在性", status: validShape ? "pass" : "fail", weight: 15,
-          detail: validShape ? "扩展思考响应包含长度合格的 opaque signature。" : "未取得长度合格的 thinking signature。",
-          evidence: typeof signature === "string" ? `签名长度 ${signature.length}（内容不展示）` : "无签名",
-          critical: !validShape,
-        });
+        checks.push(thinkingSignatureCheck(true, content.find((block) => block.type === "thinking")?.signature));
       } else {
-        checks.push({ id: "thinking-signature", label: "Thinking signature", status: "warn", weight: 15, detail: "未启用深度探针；该项不会产生约 1,024 个思考 Token 的额外费用。" });
+        checks.push(thinkingSignatureCheck(false, undefined));
       }
     } else {
       checks.push({
@@ -311,6 +329,7 @@ export async function POST(request: NextRequest) {
       requestCount: 3
         + countTokenRequests
         + (thinking && protocol === "anthropic" ? 1 : 0)
+        + (longContext ? 1 : 0)
         + (mode === "deep" ? protocol === "anthropic" ? 1 : 2 : 0),
       disclaimer: "本检测能发现协议转译、Token 增量异常与流式计数差异；不能替代供应商账单，也不能仅凭文本数学证明具体模型身份。",
     });

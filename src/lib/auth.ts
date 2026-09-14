@@ -1,0 +1,57 @@
+import { timingSafeEqual } from "node:crypto";
+import type { NextRequest } from "next/server";
+import { readSession } from "./store";
+
+export const SESSION_COOKIE = "sd_session";
+
+export function normalizeEmail(email: string) {
+  return email.trim().toLowerCase();
+}
+
+export function validEmail(email: string) {
+  return /^[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}$/i.test(email) && email.length <= 120;
+}
+
+async function pbkdf2(password: string, salt: Uint8Array) {
+  const material = new Uint8Array(salt);
+  const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(password), "PBKDF2", false, ["deriveBits"]);
+  const bits = await crypto.subtle.deriveBits({ name: "PBKDF2", hash: "SHA-256", salt: material, iterations: 80_000 }, key, 256);
+  return new Uint8Array(bits);
+}
+
+export async function hashPassword(password: string) {
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  const hash = await pbkdf2(password, salt);
+  return `${Buffer.from(salt).toString("base64url")}.${Buffer.from(hash).toString("base64url")}`;
+}
+
+export async function verifyPassword(password: string, stored: string) {
+  const [saltB64, hashB64] = stored.split(".");
+  if (!saltB64 || !hashB64) return false;
+  const salt = new Uint8Array(Buffer.from(saltB64, "base64url"));
+  const expected = Buffer.from(hashB64, "base64url");
+  const actual = Buffer.from(await pbkdf2(password, salt));
+  return expected.length === actual.length && timingSafeEqual(expected, actual);
+}
+
+export function newSessionId() {
+  return Buffer.from(crypto.getRandomValues(new Uint8Array(18))).toString("base64url");
+}
+
+export function sessionCookie(value: string) {
+  return {
+    name: SESSION_COOKIE,
+    value,
+    httpOnly: true,
+    sameSite: "lax" as const,
+    path: "/",
+    maxAge: 60 * 60 * 24 * 14,
+    secure: process.env.NODE_ENV === "production",
+  };
+}
+
+export async function emailFromRequest(request: NextRequest) {
+  const id = request.cookies.get(SESSION_COOKIE)?.value;
+  if (!id) return null;
+  return readSession(id);
+}
