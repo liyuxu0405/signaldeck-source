@@ -52,15 +52,15 @@ export function sanitizeReport(input: unknown, id: string, createdAt: string): P
   const verdict = asText(raw.verdict, 40);
   const disclaimer = asText(raw.disclaimer, 400);
   const score = asScore(raw.score);
-  const durationMs = asInt(raw.durationMs, 1, 180_000);
-  const requestCount = asInt(raw.requestCount, 1, 20);
+  const durationMs = asInt(raw.durationMs, 1, 300_000);
+  const requestCount = asInt(raw.requestCount, 1, 24);
   const mode = raw.mode === "deep" ? "deep" : "standard";
   const checks = sanitizeChecks(raw.checks);
   const payload: PublicReport = {
     id, createdAt, score, verdict, protocol, model, host, durationMs, requestCount, mode, disclaimer, checks,
   };
   const serialized = JSON.stringify(payload);
-  if (serialized.length > 24_000) throw new Error("报告过大，无法公开");
+  if (serialized.length > 40_000) throw new Error("报告过大，无法公开");
   if (secretPattern.test(serialized)) throw new Error("报告疑似包含密钥片段，已拒绝保存");
   return payload;
 }
@@ -78,7 +78,7 @@ export function toIndexItem(report: PublicReport): ReportIndexItem {
 }
 
 function sanitizeChecks(value: unknown): DetectionCheck[] {
-  if (!Array.isArray(value) || value.length < 1 || value.length > 16) {
+  if (!Array.isArray(value) || value.length < 1 || value.length > 22) {
     throw new Error("检测项数量无效");
   }
   return value.map((item) => {

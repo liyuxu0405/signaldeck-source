@@ -1,4 +1,7 @@
 export type AdPlacement = "home-top" | "home-mid" | "directory-top" | "report-side";
+export type ModelGroupId = "claude" | "gpt" | "gemini";
+export type ApplicationStatus = "pending" | "approved" | "rejected";
+export type ListingTier = "featured" | "pro";
 
 export type AdSlot = {
   id: string;
@@ -18,7 +21,32 @@ export type Listing = {
   href: string;
   featured: boolean;
   paid: true;
+  pro?: boolean;
+  ownerEmail?: string;
 };
+
+export type SponsorSlot = {
+  id: string;
+  group: ModelGroupId;
+  rank: number;
+  vacant: boolean;
+  partner?: string;
+  href?: string;
+};
+
+export type RankSlot = {
+  id: string;
+  rank: number;
+  vacant: boolean;
+  partner?: string;
+  href?: string;
+};
+
+export const modelGroups: { id: ModelGroupId; name: string }[] = [
+  { id: "claude", name: "Claude" },
+  { id: "gpt", name: "GPT" },
+  { id: "gemini", name: "Gemini" },
+];
 
 export type Affiliate = {
   slug: string;
@@ -77,6 +105,13 @@ export const packages: CommercialPackage[] = [
     perks: ["在对应模型分组旁展示", "与检测入口相邻", "不改变该项检测权重"],
   },
   {
+    id: "pro",
+    name: "PRO 认证收录",
+    price: "¥1,999 / 年起",
+    audience: "需要站长后台入口与认证标识的服务商",
+    perks: ["PRO 标识与收录页认证区", "可从站长后台提交资料", "分数仍只来自公开报告"],
+  },
+  {
     id: "affiliate",
     name: "联盟分销",
     price: "CPS 协商",
@@ -85,12 +120,35 @@ export const packages: CommercialPackage[] = [
   },
 ];
 
+export const sponsors: SponsorSlot[] = modelGroups.flatMap((group) =>
+  Array.from({ length: 10 }, (_, index) => ({
+    id: `${group.id}-S${index + 1}`,
+    group: group.id,
+    rank: index + 1,
+    vacant: true,
+  })),
+);
+
+export const paidRanks: RankSlot[] = Array.from({ length: 10 }, (_, index) => ({
+  id: `T${index + 1}`,
+  rank: index + 1,
+  vacant: true,
+}));
+
 export function adsFor(placement: AdPlacement) {
   return ads.filter((ad) => ad.placement === placement);
 }
 
-export function featuredListings() {
-  return listings.filter((item) => item.featured);
+export function featuredListings(extra: Listing[] = []) {
+  return [...listings, ...extra].filter((item) => item.featured);
+}
+
+export function proListings(extra: Listing[] = []) {
+  return [...listings, ...extra].filter((item) => item.pro);
+}
+
+export function sponsorsFor(group: ModelGroupId) {
+  return sponsors.filter((item) => item.group === group);
 }
 
 export function getAffiliate(slug: string) {
@@ -108,10 +166,16 @@ export function getAffiliate(slug: string) {
 
 export function inventorySummary() {
   const vacantAds = ads.filter((ad) => ad.vacant).length;
+  const vacantSponsors = sponsors.filter((item) => item.vacant).length;
+  const vacantRanks = paidRanks.filter((item) => item.vacant).length;
   return {
     adSlots: ads.length,
     vacantAds,
     soldAds: ads.length - vacantAds,
+    sponsorSlots: sponsors.length,
+    vacantSponsors,
+    rankSlots: paidRanks.length,
+    vacantRanks,
     featured: featuredListings().length,
     affiliates: affiliates.length,
   };

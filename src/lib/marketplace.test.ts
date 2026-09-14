@@ -25,6 +25,8 @@ describe("变现库存与报告安全", () => {
     const summary = inventorySummary();
     expect(summary.adSlots).toBeGreaterThan(0);
     expect(summary.vacantAds).toBe(summary.adSlots);
+    expect(summary.sponsorSlots).toBe(30);
+    expect(summary.rankSlots).toBe(10);
     expect(getAffiliate("not-a-partner")).toBeUndefined();
   });
 

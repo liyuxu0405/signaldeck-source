@@ -26,6 +26,7 @@ async function readJson<T>(response: Response): Promise<T> {
 export function LiveDashboard() {
   const [protocol, setProtocol] = useState<Protocol>("openai");
   const [mode, setMode] = useState<"standard" | "deep">("standard");
+  const [longContext, setLongContext] = useState(false);
   const [baseUrl, setBaseUrl] = useState("");
   const [apiKey, setApiKey] = useState("");
   const [model, setModel] = useState("");
@@ -79,8 +80,8 @@ export function LiveDashboard() {
       const response = await fetch("/api/detect", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ protocol, baseUrl, apiKey, model, thinking, mode }),
-        signal: AbortSignal.timeout(mode === "deep" ? 110_000 : thinking ? 90_000 : protocol === "anthropic" ? 45_000 : 30_000),
+        body: JSON.stringify({ protocol, baseUrl, apiKey, model, thinking, mode, longContext }),
+        signal: AbortSignal.timeout(mode === "deep" || longContext ? 120_000 : thinking ? 90_000 : protocol === "anthropic" ? 45_000 : 30_000),
       });
       const data = await readJson<ResultPayload & { error?: string }>(response);
       if (!response.ok) throw new Error(data.error || "检测请求失败");
@@ -184,11 +185,18 @@ export function LiveDashboard() {
               <label className="mt-5 flex cursor-pointer items-start gap-3 rounded-xl border border-slate-200 p-3">
                 <input type="checkbox" checked={thinking} onChange={(e) => setThinking(e.target.checked)} className="mt-1 accent-[#176b5b]" />
                 <span>
-                  <span className="block text-sm font-medium">启用 Thinking signature 探针</span>
-                  <span className="mt-1 block text-xs leading-5 text-slate-500">额外消耗约 1,024 个思考 Token。仅检查签名存在与长度，不宣称本地完成密码学验签。</span>
+                  <span className="block text-sm font-medium">启用 Thinking signature 探针（高权重）</span>
+                  <span className="mt-1 block text-xs leading-5 text-slate-500">额外消耗约 1,024 个思考 Token。只检查 opaque signature 存在与长度，不做离线验签。</span>
                 </span>
               </label>
             )}
+            <label className="mt-5 flex cursor-pointer items-start gap-3 rounded-xl border border-slate-200 p-3">
+              <input type="checkbox" checked={longContext} onChange={(e) => setLongContext(e.target.checked)} className="mt-1 accent-[#176b5b]" />
+              <span>
+                <span className="block text-sm font-medium">启用长上下文抽样</span>
+                <span className="mt-1 block text-xs leading-5 text-slate-500">再发一组更长水窗输入，核对 usage 是否继续上升。这不是官方百万级上下文账单证明，会增加费用。</span>
+              </span>
+            </label>
             <Button type="button" variant="outline" className="mt-5 w-full" disabled={probeLoading || loading || !baseUrl || !apiKey} onClick={probeEndpoint}>
               {probeLoading ? <><LoaderCircle className="animate-spin" />正在检查连接…</> : <><SearchCheck />预检连接与模型</>}
             </Button>

@@ -215,6 +215,130 @@ export function tokenChecks(
   ];
 }
 
+export function extractAssistantText(protocol: Protocol, data: Record<string, unknown>) {
+  if (protocol === "anthropic") {
+    const content = Array.isArray(data.content) ? data.content : [];
+    return content.map(record).filter((block) => block?.type === "text").map((block) => String(block?.text ?? "")).join("");
+  }
+  const choices = Array.isArray(data.choices) ? data.choices : [];
+  const content = record(record(choices[0])?.message)?.content;
+  return typeof content === "string" ? content : "";
+}
+
+export function instructionFollowCheck(text: string): DetectionCheck {
+  const hit = text.includes("SIGNALDECK_OK");
+  return {
+    id: "instruction",
+    label: "短输出指令遵循",
+    status: hit ? "pass" : "warn",
+    weight: 6,
+    detail: hit
+      ? "短提示响应包含约定标记 SIGNALDECK_OK。"
+      : "短提示未回传约定标记。这只能说明指令遵循弱，不能单独证明模型被替换。",
+    evidence: text ? `输出截断 ${text.slice(0, 80)}` : "空输出",
+  };
+}
+
+export function stopReasonCheck(protocol: Protocol, data: Record<string, unknown>): DetectionCheck {
+  const reason = protocol === "anthropic"
+    ? data.stop_reason
+    : record(Array.isArray(data.choices) ? data.choices[0] as Record<string, unknown> : undefined)?.finish_reason;
+  const ok = protocol === "anthropic"
+    ? reason === "end_turn" || reason === "max_tokens" || reason === "stop_sequence"
+    : reason === "stop" || reason === "length";
+  return {
+    id: "stop-reason",
+    label: "结束原因字段",
+    status: ok ? "pass" : "warn",
+    weight: 6,
+    detail: ok ? "响应包含该协议常见的结束原因。" : "缺少或使用了非标准结束原因，可能经过转译层。",
+    evidence: `finish/stop=${String(reason ?? "缺失")}`,
+  };
+}
+
+export function outputBoundCheck(protocol: Protocol, data: Record<string, unknown>, maxTokens: number): DetectionCheck {
+  const usage = record(data.usage);
+  const output = protocol === "anthropic" ? usage?.output_tokens : usage?.completion_tokens;
+  const valid = typeof output === "number";
+  const bounded = valid && output <= maxTokens * 3;
+  return {
+    id: "output-bound",
+    label: "输出 Token 上限约束",
+    status: !valid ? "warn" : bounded ? "pass" : "fail",
+    weight: 6,
+    critical: valid && !bounded,
+    detail: !valid
+      ? "响应未提供输出 Token，无法核对 max_tokens 约束。"
+      : bounded
+        ? "输出计数未明显突破本次 max_tokens 约束。"
+        : "输出计数显著超过本次 max_tokens，存在计费或截断异常。",
+    evidence: `max_tokens=${maxTokens}；output=${String(output ?? "缺失")}`,
+  };
+}
+
+export function streamShapeCheck(protocol: Protocol, text: string): DetectionCheck {
+  const hasDone = text.includes("[DONE]");
+  const hasData = text.includes("data:");
+  const anthropicEvents = /event:\s*(message_start|content_block_delta|message_delta)/.test(text) || text.includes("\"type\":\"message_start\"");
+  const valid = protocol === "anthropic" ? hasData && (anthropicEvents || hasDone) : hasData && (hasDone || text.includes("chat.completion.chunk"));
+  return {
+    id: "stream-shape",
+    label: "流式协议形状",
+    status: valid ? "pass" : "warn",
+    weight: 8,
+    detail: valid ? "流式响应符合常见 SSE 分片形态。" : "流式响应缺少常见 SSE 分片标记，可能被聚合或改写。",
+    evidence: `data=${hasData}；done=${hasDone}；anthropic事件=${anthropicEvents}`,
+  };
+}
+
+export function longContextCheck(enabled: boolean, longInput?: number, contextInput?: number): DetectionCheck {
+  if (!enabled) {
+    return {
+      id: "long-context",
+      label: "长上下文抽样",
+      status: "warn",
+      weight: 8,
+      detail: "未启用水窗抽样。该项只验证更长输入的 usage 是否继续上升，不是官方百万级上下文账单证明。",
+    };
+  }
+  const grew = typeof longInput === "number" && typeof contextInput === "number" && contextInput > longInput;
+  return {
+    id: "long-context",
+    label: "长上下文抽样",
+    status: grew ? "pass" : "fail",
+    weight: 10,
+    critical: !grew,
+    detail: grew
+      ? "更长水窗输入的上报 Token 继续增加。"
+      : "更长水窗输入的上报 Token 未继续增加，存在可复核的上下文截断或计数异常。",
+    evidence: `长提示 ${String(longInput ?? "缺失")} → 水窗 ${String(contextInput ?? "缺失")}`,
+  };
+}
+
+export function thinkingSignatureCheck(enabled: boolean, signature: unknown): DetectionCheck {
+  if (!enabled) {
+    return {
+      id: "thinking-signature",
+      label: "Thinking signature 存在性",
+      status: "warn",
+      weight: 10,
+      detail: "未启用该探针。启用后只检查 opaque signature 的存在与长度，权重较高，但不做离线密码学验签。",
+    };
+  }
+  const validShape = typeof signature === "string" && signature.length >= 100;
+  return {
+    id: "thinking-signature",
+    label: "Thinking signature 存在性",
+    status: validShape ? "pass" : "fail",
+    weight: 22,
+    critical: !validShape,
+    detail: validShape
+      ? "扩展思考响应包含长度合格的 opaque signature。这不能替代 Anthropic 私钥验签。"
+      : "未取得长度合格的 thinking signature。",
+    evidence: typeof signature === "string" ? `签名长度 ${signature.length}（内容不展示）` : "无签名",
+  };
+}
+
 export function summarize(checks: DetectionCheck[]) {
   const earned = checks.reduce((total, check) => {
     if (check.status === "pass") return total + check.weight;

@@ -3,7 +3,7 @@ import { FeaturedListings } from "@/components/featured-listings";
 import { LeadForm } from "@/components/lead-form";
 import { Badge } from "@/components/ui/badge";
 import {
-  ads, businessContact, featuredListings, inventorySummary, monetizationPolicy, packages,
+  ads, businessContact, featuredListings, inventorySummary, monetizationPolicy, packages, paidRanks, sponsors,
 } from "@/lib/marketplace";
 
 export const metadata = {
@@ -22,10 +22,11 @@ export default function BusinessPage() {
         商务邮箱 <a className="text-[#176b5b] underline" href={`mailto:${businessContact.email}`}>{businessContact.email}</a>
       </p>
 
-      <div className="mt-8 grid gap-4 sm:grid-cols-3">
-        <Stat label="广告位" value={`${inventory.soldAds}/${inventory.adSlots} 已售`} />
-        <Stat label="空位可售" value={`${inventory.vacantAds} 个`} />
-        <Stat label="精选收录 / 联盟" value={`${inventory.featured} / ${inventory.affiliates}`} />
+      <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <Stat label="横幅广告" value={`${inventory.soldAds}/${inventory.adSlots} 已售`} />
+        <Stat label="模型组赞助" value={`${inventory.sponsorSlots - inventory.vacantSponsors}/${inventory.sponsorSlots} 已售`} />
+        <Stat label="付费 Top 10" value={`${inventory.rankSlots - inventory.vacantRanks}/${inventory.rankSlots} 已售`} />
+        <Stat label="空位可售" value={`${inventory.vacantAds + inventory.vacantSponsors + inventory.vacantRanks} 个`} />
       </div>
 
       <div className="mt-10 grid gap-4 md:grid-cols-2">
@@ -54,6 +55,18 @@ export default function BusinessPage() {
               <Badge variant={ad.vacant ? "outline" : "secondary"}>{ad.vacant ? "可售" : "已售"}</Badge>
             </div>
           ))}
+          {paidRanks.map((slot) => (
+            <div key={slot.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3">
+              <div>
+                <div className="font-medium">{slot.id} · 付费展示第 {slot.rank} 名</div>
+                <div className="text-xs text-slate-500">{slot.vacant ? "空位招租" : slot.partner}</div>
+              </div>
+              <Badge variant={slot.vacant ? "outline" : "secondary"}>{slot.vacant ? "可售" : "已售"}</Badge>
+            </div>
+          ))}
+          <div className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600">
+            模型组赞助共 {sponsors.length} 席，当前空位 {inventory.vacantSponsors}。详情见公开榜页的 S1–S10 网格。
+          </div>
         </div>
       </section>
 
@@ -62,7 +75,7 @@ export default function BusinessPage() {
         <div className="space-y-4">
           <FeaturedListings listings={featuredListings()} />
           <div className="rounded-2xl border border-slate-200 bg-slate-50 p-5 text-sm leading-6 text-slate-600">
-            上线流程：提交意向 → 确认素材与跳转 → 付款 → 我们改库存配置后部署。检测逻辑不会因付款改变。
+            上线流程：注册站长账号或提交意向 → 确认素材与跳转 → 付款 → 人工开通。检测逻辑不会因付款改变。
             <div className="mt-3">
               <Link href="/" className="font-medium text-[#176b5b]">返回检测 →</Link>
             </div>
