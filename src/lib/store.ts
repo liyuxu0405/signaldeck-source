@@ -3,6 +3,16 @@ import type { Listing } from "./marketplace";
 
 export type UserRecord = { email: string; password: string; createdAt: string };
 
+export type LeadRecord = {
+  id: string;
+  createdAt: string;
+  name: string;
+  contact: string;
+  company: string;
+  note: string;
+  packageId: string;
+};
+
 export type ListingApplication = {
   id: string;
   email: string;
@@ -86,10 +96,10 @@ export async function listRecentReports() {
   return readIndex(await getStore());
 }
 
-export async function saveLead(payload: Record<string, string>) {
+export async function saveLead(payload: Omit<LeadRecord, "id" | "createdAt">): Promise<LeadRecord> {
   const store = await getStore();
   const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-  const record = { id, createdAt: new Date().toISOString(), ...payload };
+  const record: LeadRecord = { id, createdAt: new Date().toISOString(), ...payload };
   await store.put(`lead:${id}`, JSON.stringify(record), {
     expirationTtl: 60 * 60 * 24 * 180,
   });
@@ -119,12 +129,12 @@ export async function listLeads() {
     const item = await store.get(`lead:${id}`);
     if (!item) return null;
     try {
-      return JSON.parse(item) as Record<string, string>;
+      return JSON.parse(item) as LeadRecord;
     } catch {
       return null;
     }
   }));
-  return rows.filter((item): item is Record<string, string> => Boolean(item));
+  return rows.filter((item): item is LeadRecord => item !== null);
 }
 
 export async function recordAffiliateClick(slug: string) {
@@ -201,7 +211,7 @@ export async function listApplications(email?: string) {
       return null;
     }
   }));
-  return rows.filter((item): item is ListingApplication => Boolean(item) && (!email || item.email === email));
+  return rows.filter((item): item is ListingApplication => item !== null && (!email || item.email === email));
 }
 
 export async function approvedOperatorListings(): Promise<Listing[]> {
