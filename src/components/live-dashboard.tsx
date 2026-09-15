@@ -187,10 +187,20 @@ export function LiveDashboard({
             <label className="mt-5 block text-sm font-medium">API Key</label>
             <Input className="mt-2" type="password" required autoComplete="off" value={apiKey} onChange={(e) => { setApiKey(e.target.value); setProbe(null); setAvailableModels([]); setModel(""); }} placeholder="仅用于当前检测" />
             <label className="mt-5 block text-sm font-medium">目标模型</label>
-            <select className="mt-2 h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm outline-none transition focus:border-[#176b5b] focus:ring-3 focus:ring-emerald-700/15 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-400" required disabled={!availableModels.length} value={model} onChange={(e) => setModel(e.target.value)}>
-              {!availableModels.length && <option value="">{probeLoading ? "正在读取模型列表…" : "请先预检连接与模型"}</option>}
-              {availableModels.map((item) => <option key={item} value={item}>{item}</option>)}
-            </select>
+            <Input
+              className="mt-2"
+              list="detect-models"
+              required
+              value={model}
+              onChange={(e) => setModel(e.target.value)}
+              placeholder={availableModels[0] || (protocol === "anthropic" ? "claude-sonnet-4-5" : "gpt-4o-mini")}
+            />
+            <datalist id="detect-models">
+              {availableModels.map((item) => <option key={item} value={item} />)}
+            </datalist>
+            <p className="mt-2 text-xs text-slate-500">
+              {availableModels.length ? `预检读到 ${availableModels.length} 个模型，可下拉或手填。` : "可先预检自动填充；若中转不开放 /v1/models，请手填模型名。"}
+            </p>
             {protocol === "anthropic" && (
               <label className="mt-5 flex cursor-pointer items-start gap-3 rounded-xl border border-slate-200 p-3">
                 <input type="checkbox" checked={thinking} onChange={(e) => setThinking(e.target.checked)} className="mt-1 accent-[#176b5b]" />

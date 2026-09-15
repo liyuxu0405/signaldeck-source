@@ -66,13 +66,21 @@ export function AdminInbox() {
         error?: string;
         settled?: number;
         checked?: number;
+        okxConfigured?: boolean;
+        okxError?: string;
         okxBalance?: { funding: string; trading: string; total: string };
       };
       if (!response.ok) throw new Error(data.error || "链上查询失败");
-      const balanceNote = data.okxBalance ? `欧易 USDT 余额 ${data.okxBalance.total}（资金 ${data.okxBalance.funding} / 交易 ${data.okxBalance.trading}）。` : "";
+      const balanceNote = data.okxBalance
+        ? `欧易 USDT 余额 ${data.okxBalance.total}（资金 ${data.okxBalance.funding} / 交易 ${data.okxBalance.trading}）。`
+        : data.okxConfigured === false
+          ? "未配置欧易 API，当前只查链上转账。"
+          : data.okxError
+            ? `欧易查询失败：${data.okxError}。`
+            : "";
       setScanNote(data.settled
         ? `${balanceNote}新确认 ${data.settled} 笔，已自动上架。`
-        : `${balanceNote}已查 ${data.checked ?? 0} 笔待收款，暂无匹配金额的入账。`);
+        : `${balanceNote}已查 ${data.checked ?? 0} 笔待收款，暂无匹配金额的 ERC-20 USDT 入账。`);
       await load();
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "链上查询失败");

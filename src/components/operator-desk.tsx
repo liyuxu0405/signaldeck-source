@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { packages } from "@/lib/marketplace";
-import { packageUsdt } from "@/lib/usdt";
+import { DEFAULT_USDT_RECEIVE_ADDRESS, packageUsdt } from "@/lib/usdt";
 import type { ListingApplication } from "@/lib/store";
 
 const applyPackages = packages.filter((item) => ["featured", "pro", "sponsor", "banner"].includes(item.id));
@@ -26,12 +26,13 @@ export function OperatorDesk({
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
   const [checkingId, setCheckingId] = useState("");
-  const [payAddress, setPayAddress] = useState("");
+  const [payAddress, setPayAddress] = useState(DEFAULT_USDT_RECEIVE_ADDRESS);
+  const [copied, setCopied] = useState("");
 
   useEffect(() => {
     fetch("/api/account/usdt").then(async (response) => {
-      const data = await response.json() as { address?: string; configured?: boolean };
-      if (data.configured && data.address) setPayAddress(data.address);
+      const data = await response.json() as { address?: string };
+      if (data.address) setPayAddress(data.address);
     }).catch(() => undefined);
   }, []);
 
@@ -57,6 +58,16 @@ export function OperatorDesk({
       setMessage(reason instanceof Error ? reason.message : "提交失败");
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function copy(label: string, value: string) {
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopied(label);
+      window.setTimeout(() => setCopied(""), 1500);
+    } catch {
+      setCopied("");
     }
   }
 
@@ -123,12 +134,24 @@ export function OperatorDesk({
                 {item.usdtAmount && !item.paidAt && item.status !== "rejected" && (
                   <div className="mt-3 rounded-lg bg-slate-50 p-3 text-xs leading-6 text-slate-700">
                     <div>网络：Ethereum · ERC-20 USDT</div>
-                    <div>金额（必须一致）：<code className="select-all">{item.usdtAmount}</code></div>
-                    <div className="break-all">地址：<code className="select-all">{payAddress || "管理员尚未配置收款地址"}</code></div>
-                    <Button type="button" size="sm" className="mt-2" disabled={!payAddress || checkingId === item.id} onClick={() => checkPayment(item.id)}>
-                      {checkingId === item.id ? "查询链上…" : "检测入账"}
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span>金额（必须一致）：<code className="select-all">{item.usdtAmount}</code></span>
+                      <Button type="button" size="sm" variant="outline" onClick={() => copy("amount", item.usdtAmount!)}>复制金额</Button>
+                    </div>
+                    <div className="flex flex-wrap items-start gap-2">
+                      <span className="break-all">地址：<code className="select-all">{payAddress}</code></span>
+                      <Button type="button" size="sm" variant="outline" onClick={() => copy("address", payAddress)}>复制地址</Button>
+                    </div>
+                    {copied && <div className="text-emerald-700">已复制{copied === "amount" ? "金额" : "地址"}</div>}
+                    <Button type="button" size="sm" className="mt-2" disabled={checkingId === item.id} onClick={() => checkPayment(item.id)}>
+                      {checkingId === item.id ? "查询链上…" : "检测入账并上架"}
                     </Button>
                   </div>
+                )}
+                {item.paidAt && item.usdtTxHash && (
+                  <a className="mt-2 inline-block break-all text-xs text-[#176b5b]" href={`https://etherscan.io/tx/${item.usdtTxHash}`} target="_blank" rel="noreferrer">
+                    入账交易 {item.usdtTxHash}
+                  </a>
                 )}
               </li>
             ))}
