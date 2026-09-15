@@ -1,5 +1,14 @@
 import { claimUsdtTx, listApplications, readApplication, saveApplication, type ListingApplication } from "./store";
+import { workerSecret } from "./runtime-env";
 import { fetchIncomingUsdt, findMatchingTransfer, uniqueUsdtQuote } from "./usdt";
+
+export async function loadOkxKeys() {
+  const apiKey = (await workerSecret("OKX_CEX_API_KEY")) || (await workerSecret("OKX_API_KEY"));
+  const secret = (await workerSecret("OKX_CEX_SECRET_KEY")) || (await workerSecret("OKX_SECRET_KEY"));
+  const passphrase = (await workerSecret("OKX_CEX_PASSPHRASE")) || (await workerSecret("OKX_PASSPHRASE"));
+  if (!apiKey || !secret || !passphrase) return undefined;
+  return { apiKey, secret, passphrase };
+}
 
 export async function ensureUsdtQuote(app: ListingApplication) {
   if (app.usdtAmount && app.usdtMicro) return app;
@@ -20,7 +29,7 @@ export async function settleUsdtApplications(options: {
   const targets = options.onlyId ? pending.filter((item) => item.id === options.onlyId) : pending;
   if (targets.length === 0) return { settled: [] as ListingApplication[], checked: 0 };
 
-  const transfers = await fetchIncomingUsdt(options.receiveAddress, options.apiKey);
+  const transfers = await fetchIncomingUsdt(options.receiveAddress, options.apiKey, await loadOkxKeys());
   const settled: ListingApplication[] = [];
   for (const raw of targets) {
     const app = await ensureUsdtQuote(raw);

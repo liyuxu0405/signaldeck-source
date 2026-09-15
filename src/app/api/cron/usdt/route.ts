@@ -18,9 +18,21 @@ export async function POST(request: NextRequest) {
     apiKey: await workerSecret("ETHERSCAN_API_KEY"),
     onlyId: body.id,
   });
+  let okxBalance: { funding: string; trading: string; total: string } | undefined;
+  try {
+    const { loadOkxKeys } = await import("@/lib/usdt-settle");
+    const keys = await loadOkxKeys();
+    if (keys) {
+      const { fetchOkxUsdtBalance } = await import("@/lib/okx-pay");
+      okxBalance = await fetchOkxUsdtBalance(keys);
+    }
+  } catch {
+    okxBalance = undefined;
+  }
   return NextResponse.json({
     settled: result.settled.length,
     checked: result.checked,
     applications: result.settled,
+    okxBalance,
   });
 }

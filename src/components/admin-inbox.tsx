@@ -62,11 +62,17 @@ export function AdminInbox() {
         headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
         body: JSON.stringify(id ? { id } : {}),
       });
-      const data = await response.json() as { error?: string; settled?: number; checked?: number };
+      const data = await response.json() as {
+        error?: string;
+        settled?: number;
+        checked?: number;
+        okxBalance?: { funding: string; trading: string; total: string };
+      };
       if (!response.ok) throw new Error(data.error || "链上查询失败");
+      const balanceNote = data.okxBalance ? `欧易 USDT 余额 ${data.okxBalance.total}（资金 ${data.okxBalance.funding} / 交易 ${data.okxBalance.trading}）。` : "";
       setScanNote(data.settled
-        ? `链上新确认 ${data.settled} 笔，已自动上架。`
-        : `已查 ${data.checked ?? 0} 笔待收款，暂无匹配金额的 USDT 入账。`);
+        ? `${balanceNote}新确认 ${data.settled} 笔，已自动上架。`
+        : `${balanceNote}已查 ${data.checked ?? 0} 笔待收款，暂无匹配金额的入账。`);
       await load();
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "链上查询失败");

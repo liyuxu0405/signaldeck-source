@@ -31,6 +31,12 @@ export function normalizeEvmAddress(address: string) {
   return address.trim().toLowerCase();
 }
 
+export function usdtAmountToMicro(amount: string) {
+  const normalized = amount.trim();
+  if (!/^\d+(\.\d+)?$/.test(normalized)) throw new Error("金额无效");
+  const [whole, frac = ""] = normalized.split(".");
+  return (BigInt(whole) * 1_000_000n + BigInt((frac + "000000").slice(0, 6))).toString();
+}
 export function uniqueUsdtQuote(packageId: string, applicationId: string): UsdtQuote {
   const base = packageUsdt[packageId];
   if (!base) throw new Error("套餐无 USDT 标价");
@@ -47,7 +53,27 @@ export function findMatchingTransfer(transfers: UsdtTransfer[], receiveAddress: 
   return transfers.find((item) => normalizeEvmAddress(item.to) === to && item.value === expected.toString());
 }
 
-export async function fetchIncomingUsdt(receiveAddress: string, apiKey = "") {
+export async function fetchIncomingUsdt(receiveAddress: string, apiKey = "", okx?: { apiKey: string; secret: string; passphrase: string }) {
+  const transfers: UsdtTransfer[] = [];
+  const errors: string[] = [];
+  if (okx?.apiKey && okx.secret && okx.passphrase) {
+    try {
+      const { fetchOkxUsdtDeposits } = await import("./okx-pay");
+      transfers.push(...await fetchOkxUsdtDeposits(okx, receiveAddress));
+    } catch (reason) {
+      errors.push(reason instanceof Error ? reason.message : "OKX 查询失败");
+    }
+  }
+  try {
+    transfers.push(...await fetchEtherscanUsdt(receiveAddress, apiKey));
+  } catch (reason) {
+    errors.push(reason instanceof Error ? reason.message : "Etherscan 查询失败");
+  }
+  if (transfers.length === 0 && errors.length) throw new Error(errors.join("；"));
+  return transfers;
+}
+
+async function fetchEtherscanUsdt(receiveAddress: string, apiKey = "") {
   const url = new URL("https://api.etherscan.io/v2/api");
   url.searchParams.set("chainid", "1");
   url.searchParams.set("module", "account");

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { DEFAULT_USDT_RECEIVE_ADDRESS, findMatchingTransfer, uniqueUsdtQuote, validEvmAddress } from "./usdt";
+import { DEFAULT_USDT_RECEIVE_ADDRESS, findMatchingTransfer, uniqueUsdtQuote, usdtAmountToMicro, validEvmAddress } from "./usdt";
 
 describe("USDT ERC-20 入账匹配", () => {
   it("同一申请金额稳定，不同申请小数不同", () => {
@@ -17,6 +17,11 @@ describe("USDT ERC-20 入账匹配", () => {
       { transaction_id: "tx-ok", to: DEFAULT_USDT_RECEIVE_ADDRESS.toUpperCase(), value: quote.micro },
     ], DEFAULT_USDT_RECEIVE_ADDRESS, quote.micro);
     expect(hit?.transaction_id).toBe("tx-ok");
+  });
+
+  it("欧易入账金额字符串转成最小单位后可匹配", () => {
+    const quote = uniqueUsdtQuote("pro", "app-aaa");
+    expect(usdtAmountToMicro(quote.display)).toBe(quote.micro);
   });
 
   it("校验以太坊地址形态", () => {
