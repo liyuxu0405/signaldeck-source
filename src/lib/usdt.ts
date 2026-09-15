@@ -35,7 +35,7 @@ export function usdtAmountToMicro(amount: string) {
   const normalized = amount.trim();
   if (!/^\d+(\.\d+)?$/.test(normalized)) throw new Error("金额无效");
   const [whole, frac = ""] = normalized.split(".");
-  return (BigInt(whole) * 1_000_000n + BigInt((frac + "000000").slice(0, 6))).toString();
+  return (BigInt(whole) * BigInt(1_000_000) + BigInt((frac + "000000").slice(0, 6))).toString();
 }
 export function uniqueUsdtQuote(packageId: string, applicationId: string): UsdtQuote {
   const base = packageUsdt[packageId];
@@ -43,7 +43,7 @@ export function uniqueUsdtQuote(packageId: string, applicationId: string): UsdtQ
   let hash = 2166136261;
   for (const char of applicationId) hash = Math.imul(hash ^ char.charCodeAt(0), 16777619) >>> 0;
   const cents = (hash % 90) + 10;
-  const micro = BigInt(base) * 1_000_000n + BigInt(cents) * 10_000n;
+  const micro = BigInt(base) * BigInt(1_000_000) + BigInt(cents) * BigInt(10_000);
   return { display: `${base}.${cents}`, micro: micro.toString() };
 }
 
